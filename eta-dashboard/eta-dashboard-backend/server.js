@@ -192,10 +192,17 @@ app.post("/api/eta", async (req, res) => {
     }
     console.log("================================\n");
 
-    res.json(transformed);
+    // Return response with collection name
+    res.json({
+      collectionName: COLLECTION,
+      data: transformed
+    });
   } catch (err) {
     console.error("❌ /api/eta failed:", err);
-    res.status(500).json([]);
+    res.status(500).json({
+      collectionName: COLLECTION,
+      data: []
+    });
   }
 });
 

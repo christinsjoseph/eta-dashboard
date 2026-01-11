@@ -262,9 +262,9 @@ export default function OverviewPage({
               <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">Mappls vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
             </div>
             <p style={{ fontSize: "14px", color: "#64748b", textAlign: "center", marginBottom: "32px", fontWeight: "600" }}>{comparisonLabel} ETA</p>
-            <ResponsiveContainer width="100%" height={340}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" labelLine={false} label={(entry) => `${totalOrders > 0 ? ((entry.value / totalOrders) * 100).toFixed(1) : "0.0"}%`} innerRadius={70} outerRadius={120} paddingAngle={4} cornerRadius={10} dataKey="value">
+                <Pie data={pieData} cx="50%" cy="50%" labelLine={false} label={(entry) => `${totalOrders > 0 ? ((entry.value / totalOrders) * 100).toFixed(1) : "0.0"}%`} innerRadius={0} outerRadius={100} paddingAngle={4} cornerRadius={10} dataKey="value">
                   {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} style={{ filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.2))" }} />)}
                 </Pie>
                 <Tooltip contentStyle={{ background: "linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 255, 0.98) 100%)", border: "1px solid rgba(255, 255, 255, 0.6)", borderRadius: "12px", boxShadow: "0 12px 40px rgba(0, 0, 0, 0.15)", backdropFilter: "blur(20px)", fontWeight: "600" }} />

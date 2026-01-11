@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import type { EtaRecord } from "../types/eta";
 
-const COLORS = ["#4fab71ff", "#d1aa65ff", "#de7171ff"];
+const COLORS = ["#10b981", "#ef4444", "#f59e0b"];
 
 export default function PieChartBlock({
   records,
@@ -87,9 +87,10 @@ export default function PieChartBlock({
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={70}
+            innerRadius={0}
             outerRadius={110}
             paddingAngle={5}
+            cornerRadius={10}
             dataKey="value"
             nameKey="name"
             filter="url(#pieShadow)"
