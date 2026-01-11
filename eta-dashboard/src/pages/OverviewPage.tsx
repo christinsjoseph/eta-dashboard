@@ -8,6 +8,7 @@ type Props = {
   reportLabel: string;
   onCityClick: (city: string) => void;
   onBackToHome: () => void;
+  totalRecords?: number;
 };
 
 export default function OverviewPage({
@@ -17,6 +18,7 @@ export default function OverviewPage({
   reportLabel,
   onCityClick,
   onBackToHome,
+  totalRecords,
 }: Props) {
   const [comparison, setComparison] = useState<"mappls" | "oauth2">("mappls");
   const [mounted, setMounted] = useState(false);
@@ -60,7 +62,7 @@ export default function OverviewPage({
     });
   }, [validatedCityStats]);
 
-  const totalOrders = records?.length || 0;
+  const totalOrders = totalRecords || records?.length || 0;
 
   const avgMapplsGoogleVariation = useMemo(() => {
     if (!totalOrders) return "0.00";

@@ -9,6 +9,8 @@ type Source = {
   id: string;
   name: string;
   records: EtaRecord[];
+  cityStats?: any[]; // For aggregated data
+  totalRecords?: number; // For aggregated mode
 };
 
 function runIdFromDate(date: string, end = false) {
@@ -29,7 +31,15 @@ export default function App() {
     [sources, appliedIds]
   );
 
-  const cityStats = useMemo(() => aggregateByCity(mergedRecords), [mergedRecords]);
+  const cityStats = useMemo(() => {
+    // If we have aggregated city stats from MongoDB, use those
+    const mongoSource = sources.find(s => appliedIds.includes(s.id) && s.cityStats);
+    if (mongoSource?.cityStats) {
+      return mongoSource.cityStats;
+    }
+    // Otherwise aggregate from CSV records
+    return aggregateByCity(mergedRecords);
+  }, [sources, appliedIds, mergedRecords]);
 
   function uploadCsv(file: File) {
     parseEtaCsv(file, (parsed) => {
@@ -48,25 +58,30 @@ export default function App() {
     if (!fromDate || !toDate) return;
     setMongoLoading(true);
     try {
+      // First, fetch aggregated data (fast)
       const res = await fetch("http://localhost:4000/api/eta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fromRunId: runIdFromDate(fromDate),
           toRunId: runIdFromDate(toDate, true),
+         mode: "full", // Get actual records
+limit: 500000,  // Fast mode for overview
         }),
       });
       const response = await res.json();
       
       setSources((prev) => [
-        ...prev,
-        {
-          id: `mongo-${Date.now()}`,
-          name: `${response.collectionName} (${fromDate} → ${toDate})`,
-          records: response.data,
-        },
-      ]);
+  ...prev,
+  {
+    id: `mongo-${Date.now()}`,
+    name: `${response.collectionName} (${fromDate} → ${toDate})`,
+    records: response.data || [], // Use actual records
+    totalRecords: response.data?.length || 0,
+  },
+]);
     } catch (e) {
+      console.error("Failed to fetch Mongo data:", e);
       alert("Failed to fetch Mongo data");
     } finally {
       setMongoLoading(false);
@@ -90,6 +105,13 @@ export default function App() {
     setSelectedCity(null);
   }
 
+  // Get total record count
+  const totalRecords = useMemo(() => {
+    return sources
+      .filter(s => appliedIds.includes(s.id))
+      .reduce((sum, s) => sum + (s.totalRecords || s.records.length), 0);
+  }, [sources, appliedIds]);
+
   if (selectedCity) {
     return (
       <CityDetailPage
@@ -109,6 +131,7 @@ export default function App() {
         reportLabel="ETA Analysis Report"
         onCityClick={setSelectedCity}
         onBackToHome={resetToHome}
+        totalRecords={totalRecords}
       />
     );
   }
@@ -607,7 +630,7 @@ export default function App() {
                           {s.name}
                         </div>
                         <div style={{ fontSize: "14px", color: "#64748b", fontWeight: "600" }}>
-                          {s.records.length.toLocaleString()} records loaded
+                          {(s.totalRecords || s.records.length).toLocaleString()} records loaded
                         </div>
                       </div>
                       <button
