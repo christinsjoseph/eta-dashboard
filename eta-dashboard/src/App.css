@@ -1,0 +1,78 @@
+import { useMemo, useState } from "react";
+import {
+  ThemeProvider,
+  createTheme,
+  CssBaseline,
+  Box,
+  Typography,
+} from "@mui/material";
+
+import OverviewPage from "./pages/OverviewPage";
+import { parseEtaCsv } from "./data/csvParser";
+import { aggregateByCity } from "./data/aggregations";
+import { EtaRecord } from "./types/eta";
+
+const darkTheme = createTheme({
+  palette: {
+    mode: "dark",
+    background: {
+      default: "#0B0F14",
+      paper: "#111827",
+    },
+    text: {
+      primary: "#E5E7EB",
+      secondary: "#9CA3AF",
+    },
+  },
+  typography: {
+    fontFamily: "Inter, system-ui, sans-serif",
+    fontSize: 13,
+  },
+});
+
+export default function App() {
+  const [records, setRecords] = useState<EtaRecord[]>([]);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const cityStats = useMemo(
+    () => aggregateByCity(records),
+    [records]
+  );
+
+  function handleCsvUpload(file: File) {
+    parseEtaCsv(file, setRecords);
+  }
+
+  function handleCitySelect(city: string) {
+    alert(`City Detail Page for ${city} (Step 3 next)`);
+  }
+
+  return (
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Box
+        sx={{
+          minWidth: 1280,
+          maxWidth: 1920,
+          mx: "auto",
+          p: 3,
+          minHeight: "100vh",
+          backgroundColor: "background.default",
+        }}
+      >
+        <Typography variant="h5" mb={3}>
+          ETA Dashboard
+        </Typography>
+
+        <OverviewPage
+          fromDate={fromDate}
+          toDate={toDate}
+          cityStats={cityStats}
+          onUploadCsv={handleCsvUpload}
+          onCitySelect={handleCitySelect}
+        />
+      </Box>
+    </ThemeProvider>
+  );
+}
