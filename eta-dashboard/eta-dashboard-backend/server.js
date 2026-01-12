@@ -1,4 +1,5 @@
-// server.js - OPTIMIZED VERSION
+// server.js - FINAL, CORRECT & LOGIC-ALIGNED VERSION
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -31,8 +32,8 @@ async function createIndexes() {
     await collection.createIndex({ City: 1 });
     await collection.createIndex({ RunID: 1, City: 1 });
     console.log("✅ Database indexes created/verified");
-  } catch (err) {
-    console.log("⚠️  Index creation skipped (may already exist)");
+  } catch {
+    console.log("⚠️ Index creation skipped");
   }
 }
 await createIndexes();
@@ -40,10 +41,24 @@ await createIndexes();
 /* =============================
    HELPERS
    ============================= */
+
+// IMPORTANT: All comparisons use Duration fields (NOT ETADuration)
+function calculateComparisonFlag(predicted, google, threshold = 10) {
+  if (!google || google === 0) return "Similar";
+  if (!predicted || predicted === 0) return "Similar";
+
+  const variation = (1 - predicted / google) * 100;
+
+  if (variation > threshold) return "Underestimate";
+  if (variation < -threshold) return "Overestimate";
+  return "Similar";
+}
+
 function deriveTimeBucket(runId) {
   if (!runId) return "Midnight";
   const timePart = runId.split("_")[1];
   if (!timePart) return "Midnight";
+
   const hour = Number(timePart.slice(0, 2));
   if (hour >= 6 && hour < 12) return "Morning";
   if (hour >= 12 && hour < 16) return "Afternoon";
@@ -51,22 +66,12 @@ function deriveTimeBucket(runId) {
   return "Midnight";
 }
 
-function calculateComparisonFlag(predicted, google, threshold = 10) {
-  if (google === 0 || !google) return "Similar";
-  if (predicted === 0 || !predicted) return "Similar";
-  const percentDiff = ((predicted - google) / google) * 100;
-  if (Math.abs(percentDiff) <= threshold) return "Similar";
-  if (percentDiff > threshold) return "Overestimate";
-  return "Underestimate";
-}
-
 /* =============================
-   OPTIMIZED API: FETCH ETA DATA
+   API: FETCH ETA DATA
    ============================= */
 app.post("/api/eta", async (req, res) => {
   try {
     const { fromRunId, toRunId, mode = "full", limit = 10000, page = 1 } = req.body;
-    
     const startTime = Date.now();
 
     const matchQuery = {};
@@ -74,16 +79,17 @@ app.post("/api/eta", async (req, res) => {
       matchQuery.RunID = { $gte: fromRunId, $lte: toRunId };
     }
 
-    // SUPER FAST AGGREGATION MODE
+    /* =============================
+       AGGREGATED MODE
+       ============================= */
     if (mode === "aggregated") {
-      console.log("📊 Fetching AGGREGATED data using pipeline...");
-      
       const pipeline = [
         { $match: matchQuery },
         {
           $group: {
             _id: "$City",
             totalOrders: { $sum: 1 },
+
             mapplsSimilar: {
               $sum: {
                 $cond: [
@@ -92,35 +98,10 @@ app.post("/api/eta", async (req, res) => {
                       {
                         $abs: {
                           $divide: [
-                            { $subtract: [
-                              { $ifNull: ["$Mappls_ETADuration", { $ifNull: ["$Mappls_Duration", 0] }] },
-                              { $ifNull: ["$Google_Duration", 0] }
-                            ]},
-                            { $cond: [{ $eq: ["$Google_Duration", 0] }, 1, "$Google_Duration"] }
+                            { $subtract: ["$Mappls_Duration", "$Google_Duration"] },
+                            "$Google_Duration"
                           ]
                         }
-                      },
-                      0.1 // 10% threshold
-                    ]
-                  },
-                  1,
-                  0
-                ]
-              }
-            },
-            mapplsOver: {
-              $sum: {
-                $cond: [
-                  {
-                    $gt: [
-                      {
-                        $divide: [
-                          { $subtract: [
-                            { $ifNull: ["$Mappls_ETADuration", { $ifNull: ["$Mappls_Duration", 0] }] },
-                            { $ifNull: ["$Google_Duration", 0] }
-                          ]},
-                          { $cond: [{ $eq: ["$Google_Duration", 0] }, 1, "$Google_Duration"] }
-                        ]
                       },
                       0.1
                     ]
@@ -130,6 +111,27 @@ app.post("/api/eta", async (req, res) => {
                 ]
               }
             },
+
+            mapplsOver: {
+              $sum: {
+                $cond: [
+                  {
+                    $lt: [
+                      {
+                        $divide: [
+                          { $subtract: ["$Mappls_Duration", "$Google_Duration"] },
+                          "$Google_Duration"
+                        ]
+                      },
+                      -0.1
+                    ]
+                  },
+                  1,
+                  0
+                ]
+              }
+            },
+
             oauth2Similar: {
               $sum: {
                 $cond: [
@@ -138,11 +140,8 @@ app.post("/api/eta", async (req, res) => {
                       {
                         $abs: {
                           $divide: [
-                            { $subtract: [
-                              { $ifNull: ["$Oauth2_ETADuration", { $ifNull: ["$Oauth2_RouteDuration", 0] }] },
-                              { $ifNull: ["$Google_Duration", 0] }
-                            ]},
-                            { $cond: [{ $eq: ["$Google_Duration", 0] }, 1, "$Google_Duration"] }
+                            { $subtract: ["$Oauth2_RouteDuration", "$Google_Duration"] },
+                            "$Google_Duration"
                           ]
                         }
                       },
@@ -154,21 +153,19 @@ app.post("/api/eta", async (req, res) => {
                 ]
               }
             },
+
             oauth2Over: {
               $sum: {
                 $cond: [
                   {
-                    $gt: [
+                    $lt: [
                       {
                         $divide: [
-                          { $subtract: [
-                            { $ifNull: ["$Oauth2_ETADuration", { $ifNull: ["$Oauth2_RouteDuration", 0] }] },
-                            { $ifNull: ["$Google_Duration", 0] }
-                          ]},
-                          { $cond: [{ $eq: ["$Google_Duration", 0] }, 1, "$Google_Duration"] }
+                          { $subtract: ["$Oauth2_RouteDuration", "$Google_Duration"] },
+                          "$Google_Duration"
                         ]
                       },
-                      0.1
+                      -0.1
                     ]
                   },
                   1,
@@ -182,7 +179,7 @@ app.post("/api/eta", async (req, res) => {
       ];
 
       const results = await collection.aggregate(pipeline).toArray();
-      
+
       const cityStats = results.map(r => ({
         city: r._id || "Unknown",
         totalOrders: r.totalOrders,
@@ -198,24 +195,20 @@ app.post("/api/eta", async (req, res) => {
         }
       }));
 
-      const elapsed = Date.now() - startTime;
-      console.log(`✅ Aggregated ${cityStats.length} cities in ${elapsed}ms`);
-
       return res.json({
         collectionName: COLLECTION,
         mode: "aggregated",
         cityStats,
-        totalRecords: cityStats.reduce((sum, c) => sum + c.totalOrders, 0),
-        queryTime: elapsed
+        totalRecords: cityStats.reduce((s, c) => s + c.totalOrders, 0),
+        queryTime: Date.now() - startTime
       });
     }
 
-    // OPTIMIZED FULL DATA MODE
-    console.log(`📄 Fetching FULL data (page ${page}, limit ${limit})...`);
-
+    /* =============================
+       FULL MODE
+       ============================= */
     const total = await collection.countDocuments(matchQuery);
-    
-    // Use projection to only include fields we need (automatically excludes everything else including geometry)
+
     const docs = await collection
       .find(matchQuery)
       .project({
@@ -223,76 +216,41 @@ app.post("/api/eta", async (req, res) => {
         Day: 1,
         City: 1,
         UID: 1,
-        Mappls_Distance: 1,
         Mappls_Duration: 1,
-        "Mappls BaseDuration": 1,
-        Mappls_ETADuration: 1,
-        "Mappls Server": 1,
-        Google_Distance: 1,
         Google_Duration: 1,
-        Oauth2_RouteDistance: 1,
-        Oauth2_RouteDuration: 1,
-        Oauth2_server: 1,
-        Oauth2_baseDuration: 1,
-        Oauth2_ETADuration: 1,
-        TrafficDelay: 1,
-        SignalDelay: 1
+        Oauth2_RouteDuration: 1
       })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray();
 
-    const transformed = docs.map((d) => {
-      const mapplsETA = Number(d.Mappls_ETADuration ?? d.Mappls_Duration ?? 0);
+    const data = docs.map(d => {
+      const mapplsETA = Number(d.Mappls_Duration ?? 0);
       const googleETA = Number(d.Google_Duration ?? 0);
-      const oauth2ETA = Number(d.Oauth2_ETADuration ?? d.Oauth2_RouteDuration ?? 0);
-
-      const mapplsComparisonFlag = calculateComparisonFlag(mapplsETA, googleETA);
-      const oauth2ComparisonFlag = calculateComparisonFlag(oauth2ETA, googleETA);
+      const oauth2ETA = Number(d.Oauth2_RouteDuration ?? 0);
 
       return {
-        _id: d._id,
-        RunID: d.RunID,
-        Day: d.Day,
-        City: d.City,
-        UID: d.UID,
-        Mappls_Distance: d.Mappls_Distance,
-        Mappls_Duration: d.Mappls_Duration,
-        Mappls_BaseDuration: d["Mappls BaseDuration"],
-        Mappls_ETADuration: d.Mappls_ETADuration,
-        Mappls_Server: d["Mappls Server"],
-        Google_Distance: d.Google_Distance,
-        Google_Duration: d.Google_Duration,
-        Oauth2_RouteDistance: d.Oauth2_RouteDistance,
-        Oauth2_RouteDuration: d.Oauth2_RouteDuration,
-        Oauth2_server: d.Oauth2_server,
-        Oauth2_baseDuration: d.Oauth2_baseDuration,
-        Oauth2_ETADuration: d.Oauth2_ETADuration,
-        TrafficDelay: d.TrafficDelay,
-        SignalDelay: d.SignalDelay,
+        ...d,
         runId: d.RunID,
         uid: String(d.UID),
         city: d.City || "Unknown",
         mapplsETA,
         googleETA,
         oauth2ETA,
-        mapplsComparisonFlag,
+        mapplsComparisonFlag: calculateComparisonFlag(mapplsETA, googleETA),
+        oauth2ComparisonFlag: calculateComparisonFlag(oauth2ETA, googleETA),
         mapplsDifference: mapplsETA - googleETA,
-        oauth2ComparisonFlag,
         oauth2Difference: oauth2ETA - googleETA,
-        comparisonFlag: mapplsComparisonFlag,
+        comparisonFlag: calculateComparisonFlag(mapplsETA, googleETA),
         etaDifference: mapplsETA - googleETA,
-        timeBucket: deriveTimeBucket(d.RunID),
+        timeBucket: deriveTimeBucket(d.RunID)
       };
     });
-
-    const elapsed = Date.now() - startTime;
-    console.log(`✅ Fetched ${docs.length} records in ${elapsed}ms`);
 
     res.json({
       collectionName: COLLECTION,
       mode: "full",
-      data: transformed,
+      data,
       pagination: {
         page,
         limit,
@@ -300,8 +258,9 @@ app.post("/api/eta", async (req, res) => {
         totalPages: Math.ceil(total / limit),
         hasMore: page * limit < total
       },
-      queryTime: elapsed
+      queryTime: Date.now() - startTime
     });
+
   } catch (err) {
     console.error("❌ /api/eta failed:", err);
     res.status(500).json({
@@ -313,83 +272,81 @@ app.post("/api/eta", async (req, res) => {
 });
 
 /* =============================
-   API: FETCH CITY DETAILS (OPTIMIZED)
+   API: AVERAGE VARIATION (CORRECT)
    ============================= */
-app.post("/api/eta/city", async (req, res) => {
+app.post("/api/eta/average-variation", async (req, res) => {
   try {
-    const { fromRunId, toRunId, city } = req.body;
-    
+    const { fromRunId, toRunId } = req.body;
     const startTime = Date.now();
 
-    const query = { City: city };
+    const matchQuery = {
+      Google_Duration: { $gt: 0 },
+      Mappls_Duration: { $gt: 0 },
+      Oauth2_RouteDuration: { $gt: 0 }
+    };
+
     if (fromRunId && toRunId) {
-      query.RunID = {
-        $gte: fromRunId,
-        $lte: toRunId,
-      };
+      matchQuery.RunID = { $gte: fromRunId, $lte: toRunId };
     }
 
-    console.log(`🏙️  Fetching data for city: ${city}`);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $project: {
+          mapplsVariation: {
+            $multiply: [
+              { $subtract: [1, { $divide: ["$Mappls_Duration", "$Google_Duration"] }] },
+              100
+            ]
+          },
+          oauth2Variation: {
+            $multiply: [
+              { $subtract: [1, { $divide: ["$Oauth2_RouteDuration", "$Google_Duration"] }] },
+              100
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgMapplsVariation: { $avg: "$mapplsVariation" },
+          avgOauth2Variation: { $avg: "$oauth2Variation" },
+          totalRecords: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          Mappls_Duration_vs_Google_Duration_percentage: {
+            $round: ["$avgMapplsVariation", 2]
+          },
+          Oauth2_RouteDuration_vs_Google_Duration_percentage: {
+            $round: ["$avgOauth2Variation", 2]
+          },
+          totalRecords: 1
+        }
+      }
+    ];
 
-    const docs = await collection.find(query).project({
-      RunID: 1,
-      Day: 1,
-      City: 1,
-      UID: 1,
-      Mappls_ETADuration: 1,
-      Mappls_Duration: 1,
-      Google_Duration: 1,
-      Oauth2_ETADuration: 1,
-      Oauth2_RouteDuration: 1
-    }).toArray();
-
-    const transformed = docs.map((d) => {
-      const mapplsETA = Number(d.Mappls_ETADuration ?? d.Mappls_Duration ?? 0);
-      const googleETA = Number(d.Google_Duration ?? 0);
-      const oauth2ETA = Number(d.Oauth2_ETADuration ?? d.Oauth2_RouteDuration ?? 0);
-
-      const mapplsComparisonFlag = calculateComparisonFlag(mapplsETA, googleETA);
-      const oauth2ComparisonFlag = calculateComparisonFlag(oauth2ETA, googleETA);
-
-      const mapplsDifference = mapplsETA - googleETA;
-      const oauth2Difference = oauth2ETA - googleETA;
-
-      return {
-        _id: d._id,
-        RunID: d.RunID,
-        Day: d.Day,
-        City: d.City,
-        UID: d.UID,
-        runId: d.RunID,
-        uid: String(d.UID),
-        city: d.City || "Unknown",
-        mapplsETA,
-        googleETA,
-        oauth2ETA,
-        mapplsComparisonFlag,
-        mapplsDifference,
-        oauth2ComparisonFlag,
-        oauth2Difference,
-        comparisonFlag: mapplsComparisonFlag,
-        etaDifference: mapplsDifference,
-        timeBucket: deriveTimeBucket(d.RunID),
-      };
-    });
-
-    const elapsed = Date.now() - startTime;
-    console.log(`✅ Found ${transformed.length} records for ${city} in ${elapsed}ms`);
+    const [result] = await collection.aggregate(pipeline).toArray();
 
     res.json({
       collectionName: COLLECTION,
-      city,
-      data: transformed,
-      queryTime: elapsed
+      mode: "average-variation",
+      data: result || {
+        Mappls_Duration_vs_Google_Duration_percentage: 0,
+        Oauth2_RouteDuration_vs_Google_Duration_percentage: 0,
+        totalRecords: 0
+      },
+      queryTime: Date.now() - startTime
     });
+
   } catch (err) {
-    console.error("❌ /api/eta/city failed:", err);
+    console.error("❌ /api/eta/average-variation failed:", err);
     res.status(500).json({
       collectionName: COLLECTION,
-      data: [],
+      data: {},
       error: err.message
     });
   }

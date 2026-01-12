@@ -22,12 +22,12 @@ export default function OverviewPage({
 }: Props) {
   const [comparison, setComparison] = useState<"mappls" | "oauth2">("mappls");
   const [mounted, setMounted] = useState(false);
+ 
   
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
     setTimeout(() => setMounted(true), 50);
   }, []);
-
   const validatedCityStats = useMemo(() => {
     if (!records?.length) return [];
     const cityMap = new Map<string, any>();
@@ -63,34 +63,6 @@ export default function OverviewPage({
   }, [validatedCityStats]);
 
   const totalOrders = totalRecords || records?.length || 0;
-
-  const avgMapplsGoogleVariation = useMemo(() => {
-    if (!totalOrders) return "0.00";
-    let sum = 0, count = 0;
-    records.forEach((r) => {
-      const mappls = Number(r.mapplsETA ?? 0);
-      const google = Number(r.googleETA ?? 0);
-      if (google > 0) {
-        sum += ((mappls - google) / google) * 100;
-        count++;
-      }
-    });
-    return count > 0 ? (sum / count).toFixed(2) : "0.00";
-  }, [records, totalOrders]);
-
-  const avgOauth2GoogleVariation = useMemo(() => {
-    if (!totalOrders) return "0.00";
-    let sum = 0, count = 0;
-    records.forEach((r) => {
-      const oauth2 = Number(r.oauth2ETA ?? 0);
-      const google = Number(r.googleETA ?? 0);
-      if (google > 0 && oauth2 > 0) {
-        sum += ((oauth2 - google) / google) * 100;
-        count++;
-      }
-    });
-    return count > 0 ? (sum / count).toFixed(2) : "0.00";
-  }, [records, totalOrders]);
 
   const pieData = useMemo(() => {
     let similar = 0, over = 0, under = 0;
@@ -190,6 +162,40 @@ export default function OverviewPage({
     return <div style={glassCard}><p style={{ textAlign: "center", color: "#64748b", fontSize: "18px", fontWeight: "600" }}>No records available</p></div>;
   }
 
+  const mapplsAvgVariation = useMemo(() => {
+  let sum = 0;
+  let count = 0;
+
+  records.forEach((r) => {
+    const google = Number(r.googleETA ?? 0);
+    const mappls = Number(r.mapplsETA ?? 0);
+
+    if (google > 0 && mappls > 0) {
+      sum += (1 - mappls / google) * 100;
+      count++;
+    }
+  });
+
+  return count ? (sum / count).toFixed(2) : "0.00";
+}, [records]);
+
+const oauth2AvgVariation = useMemo(() => {
+  let sum = 0;
+  let count = 0;
+
+  records.forEach((r) => {
+    const google = Number(r.googleETA ?? 0);
+    const oauth2 = Number(r.oauth2ETA ?? 0);
+
+    if (google > 0 && oauth2 > 0) {
+      sum += (1 - oauth2 / google) * 100;
+      count++;
+    }
+  });
+
+  return count ? (sum / count).toFixed(2) : "0.00";
+}, [records]);
+
   const comparisonLabel = comparison === "mappls" ? "Mappls vs Google" : "Oauth2 vs Google";
 
   return (
@@ -212,14 +218,58 @@ export default function OverviewPage({
             </div>
             <div style={statCard} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 24px 64px rgba(0, 0, 0, 0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 16px 48px rgba(0, 0, 0, 0.08)"; }}>
               <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em" }}>Mappls Variation</div>
-              <div style={{ fontSize: "44px", fontWeight: "900", letterSpacing: "-0.02em", color: parseFloat(avgMapplsGoogleVariation) > 0 ? "#ef4444" : parseFloat(avgMapplsGoogleVariation) < 0 ? "#f59e0b" : "#10b981" }}>{avgMapplsGoogleVariation}%</div>
-              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "8px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>{parseFloat(avgMapplsGoogleVariation) > 0 ? "Overestimate" : parseFloat(avgMapplsGoogleVariation) < 0 ? "Underestimate" : "Similar"}</div>
+<div
+  style={{
+    fontSize: "44px",
+    fontWeight: "900",
+    letterSpacing: "-0.02em",
+    color:
+      parseFloat(mapplsAvgVariation) > 10
+        ? "#ef4444"
+        : parseFloat(mapplsAvgVariation) < -10
+        ? "#f59e0b"
+        : "#10b981",
+  }}
+>
+  {mapplsAvgVariation}%
+</div>
+
+<div style={{ fontSize: "13px", color: "#64748b", marginTop: "8px", fontWeight: "700" }}>
+  {parseFloat(mapplsAvgVariation) > 10
+    ? "Underestimate"
+    : parseFloat(mapplsAvgVariation) < -10
+    ? "Overestimate"
+    : "Similar"}
+</div>
+
             </div>
             <div style={statCard} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 24px 64px rgba(0, 0, 0, 0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 16px 48px rgba(0, 0, 0, 0.08)"; }}>
               <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em" }}>Oauth2 Variation</div>
-              <div style={{ fontSize: "44px", fontWeight: "900", letterSpacing: "-0.02em", color: parseFloat(avgOauth2GoogleVariation) > 0 ? "#ef4444" : parseFloat(avgOauth2GoogleVariation) < 0 ? "#f59e0b" : "#10b981" }}>{avgOauth2GoogleVariation}%</div>
-              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "8px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>{parseFloat(avgOauth2GoogleVariation) > 0 ? "Overestimate" : parseFloat(avgOauth2GoogleVariation) < 0 ? "Underestimate" : "Similar"}</div>
-            </div>
+<div
+  style={{
+    fontSize: "44px",
+    fontWeight: "900",
+    letterSpacing: "-0.02em",
+    color:
+      parseFloat(oauth2AvgVariation) > 10
+        ? "#ef4444"
+        : parseFloat(oauth2AvgVariation) < -10
+        ? "#f59e0b"
+        : "#10b981",
+  }}
+>
+  {oauth2AvgVariation}%
+</div>
+
+<div style={{ fontSize: "13px", color: "#64748b", marginTop: "8px", fontWeight: "700" }}>
+  {parseFloat(oauth2AvgVariation) > 10
+    ? "Underestimate"
+    : parseFloat(oauth2AvgVariation) < -10
+    ? "Overestimate"
+    : "Similar"}
+</div>
+
+</div>
           </div>
         </div>
 
