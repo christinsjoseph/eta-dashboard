@@ -6,7 +6,7 @@ const router = express.Router();
 /* -----------------------------
    Resolve date filters
 ----------------------------- */
-function resolveDateRange(body) {
+function resolveDateRange(body: any) {
   const now = new Date();
 
   if (body.preset === "LAST_7_DAYS") {
@@ -30,7 +30,7 @@ function resolveDateRange(body) {
 }
 
 /* -----------------------------
-   IMPORT ETA DATA
+   IMPORT ETA DATA  (ETL PIPELINE)
 ----------------------------- */
 router.post("/import", async (req, res) => {
   try {
@@ -61,8 +61,21 @@ router.post("/import", async (req, res) => {
           comparisonFlag: 1,
           etaDifference: 1,
           city: "$testCase.city",
+
+          // 🔑 Raw ETA values
           mapplsETA: "$metrics.providerA.etaDuration",
           googleETA: "$metrics.providerB.duration",
+        },
+      },
+
+      /* ------------------------------------------------
+         🔥 DATA CLEANING (ONLY PLACE THIS MUST HAPPEN)
+         Remove zero / invalid duration records
+      ------------------------------------------------ */
+      {
+        $match: {
+          mapplsETA: { $gt: 0 },
+          googleETA: { $gt: 0 },
         },
       },
     ];
@@ -74,10 +87,11 @@ router.post("/import", async (req, res) => {
 
     res.json({
       source: "mongo",
+      count: records.length,
       records,
     });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Mongo import failed:", err);
     res.status(500).json({ error: "Mongo import failed" });
   }
 });
