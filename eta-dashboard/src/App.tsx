@@ -111,11 +111,16 @@ limit: 500000,  // Fast mode for overview
       .filter(s => appliedIds.includes(s.id))
       .reduce((sum, s) => sum + (s.totalRecords || s.records.length), 0);
   }, [sources, appliedIds]);
+const allCities = useMemo(() => {
+  return Array.from(new Set(mergedRecords.map((r) => r.city))).sort();
+}, [mergedRecords]);
 
   if (selectedCity) {
     return (
       <CityDetailPage
         city={selectedCity}
+        cities={allCities}              // ✅ FIX
+      onCityChange={setSelectedCity}
         records={mergedRecords.filter((r) => r.city === selectedCity)}
         onBack={() => setSelectedCity(null)}
       />
