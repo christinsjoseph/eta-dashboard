@@ -129,14 +129,26 @@ useEffect(() => {
   }, [sources, appliedIds]);
 
   if (selectedCity) {
-    return (
-      <CityDetailPage
-        city={selectedCity}
-        records={mergedRecords.filter((r) => r.city === selectedCity)}
-        onBack={() => setSelectedCity(null)}
-      />
-    );
-  }
+  const cityRecords = mergedRecords.filter((r) => {
+    const city =
+      (r.city ?? (r as any).City)?.toString().trim().toLowerCase() || "unknown";
+    return city === selectedCity;
+  });
+console.log("Selected city:", selectedCity);
+console.log("Merged records:", mergedRecords.length);
+console.log("City records:", cityRecords.length);
+console.log("Sample city record:", cityRecords[0]);
+
+  return (
+   <CityDetailPage
+  city={selectedCity}
+  records={mergedRecords}   // ⬅️ PASS ALL RECORDS
+  onBack={() => setSelectedCity(null)}
+/>
+
+  );
+}
+
 
   if (appliedIds.length > 0) {
     return (

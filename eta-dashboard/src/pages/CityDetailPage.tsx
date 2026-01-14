@@ -88,13 +88,26 @@ color: colored
 }
 export default function CityDetailPage({ city, records, onBack }: Props) {
   const [comparison, setComparison] = useState<"mappls" | "oauth2">("mappls");
+  // 🔽 STEP 4: active city inside CityDetail page
+const [activeCity, setActiveCity] = useState(
+  city.toLowerCase()
+);
+
   const [selectedBuckets, setSelectedBuckets] = useState<TimeBucket[]>(ALL_BUCKETS);
   const [selectedFlags, setSelectedFlags] = useState<ComparisonFlag[]>(ALL_FLAGS);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [uidSearch, setUidSearch] = useState("");
-
-  
+  // 🔽 STEP 3: get unique cities from all records
+const allCities = useMemo(() => {
+  return Array.from(
+    new Set(
+      records.map((r: any) =>
+        (r.city ?? r.City)?.toString().trim().toLowerCase()
+      )
+    )
+  ).filter(Boolean);
+}, [records]);
 
 
   type SortKey =
@@ -109,10 +122,18 @@ export default function CityDetailPage({ city, records, onBack }: Props) {
 const [sortKey, setSortKey] = useState<SortKey>("count");
 const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
+// 🔽 STEP 5: records filtered by selected city
+const cityFilteredRecords = useMemo(() => {
+  return records.filter((r: any) => {
+    const c =
+      (r.city ?? r.City)?.toString().trim().toLowerCase();
+    return c === activeCity;
+  });
+}, [records, activeCity]);
 
   const enrichedRecords = useMemo(
   () =>
-    records.map((r) => {
+    cityFilteredRecords.map((r) => {
       const google = Number(r.googleETA ?? 0);
       const provider =
         comparison === "mappls"
@@ -135,7 +156,7 @@ const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
         activeVariation: variation
       };
     }),
-  [records, comparison]
+  [cityFilteredRecords, comparison]
 );
 
   const filteredRecords = useMemo(
@@ -305,7 +326,7 @@ const exportExpandedTableCSV = () => {
 
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${city}-filtered-records.csv`;
+  link.download = `${activeCity}-filtered-records.csv`;
   link.click();
 
   URL.revokeObjectURL(url);
@@ -419,10 +440,10 @@ const exportExpandedTableCSV = () => {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
                 <div>
                   <h1 style={{ fontSize: "2.5rem", fontWeight: 800, margin: 0, color: "#111827", letterSpacing: "-0.02em" }}>
-                    {city} — ETA Analysis
+                    {activeCity.toUpperCase()} — ETA Analysis — ETA Analysis
                   </h1>
                   <p style={{ color: "#64748b", marginTop: "8px", fontSize: "1.05rem", fontWeight: 500 }}>
-                    Showing {filteredRecords.length} of {records.length} records
+                    Showing {filteredRecords.length} of {cityFilteredRecords.length} records
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
@@ -740,6 +761,27 @@ const exportExpandedTableCSV = () => {
                   {comparisonLabel} vs Google ETA — Full View ({city})
                 </h2>
                 <select
+  value={activeCity}
+  onChange={(e) => setActiveCity(e.target.value)}
+  style={{
+    marginTop: "8px",
+    padding: "8px 16px",
+    borderRadius: "10px",
+    border: "2px solid rgba(59,130,246,0.3)",
+    background: "white",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+  }}
+>
+  {allCities.map((c) => (
+    <option key={c} value={c}>
+      {c.replace(/\b\w/g, (x) => x.toUpperCase())}
+    </option>
+  ))}
+</select>
+
+                <select
   value={comparison}
   onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")}
   style={{
@@ -787,7 +829,8 @@ const exportExpandedTableCSV = () => {
     marginBottom: "8px",
   }}
 >
-  Total Records: <b>{records.length}</b>
+  Total Records: <b>{cityFilteredRecords.length}</b>
+
   <span style={{ margin: "0 6px" }}>•</span>
   After Filters: <b>{filteredRecords.length}</b>
 </div>

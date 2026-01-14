@@ -32,7 +32,9 @@ export default function OverviewPage({
     if (!records?.length) return [];
     const cityMap = new Map<string, any>();
     records.forEach((r) => {
-      const city = r.city || r.City || "Unknown";
+  const city =
+    (r.city ?? r.City)?.toString().trim().toLowerCase() || "unknown";
+
       if (!cityMap.has(city)) {
         cityMap.set(city, { city, totalOrders: 0, similarCount: 0, overCount: 0, underCount: 0 });
       }
@@ -295,12 +297,16 @@ const oauth2AvgVariation = useMemo(() => {
                 <tbody>
                   {validatedCityStats.map((cs, idx) => (
                     <tr key={cs?.city || idx} style={{ borderBottom: "1px solid rgba(226, 232, 240, 0.4)" }}>
-                      <td style={{ padding: "16px 20px", fontWeight: "700", color: "#0f172a", fontSize: "14px" }}>{cs?.city || "Unknown"}</td>
+                      <td style={{ padding: "16px 20px", fontWeight: "700", color: "#0f172a", fontSize: "14px" }}>{cs?.city
+  ? cs.city.replace(/\b\w/g, (c: string) => c.toUpperCase())
+  : "Unknown"}</td>
                       <td style={{ padding: "16px 20px", textAlign: "center", fontWeight: "700", fontSize: "14px" }}>{(cs?.totalOrders || 0).toLocaleString()}</td>
                       <td style={{ padding: "16px 20px", textAlign: "center", fontWeight: "600", fontSize: "14px" }}>{cs?.similarCount || 0}<br/><span style={{ fontSize: "12px", color: "#64748b" }}>({cs?.totalOrders > 0 ? ((cs.similarCount / cs.totalOrders) * 100).toFixed(1) : 0}%)</span></td>
                       <td style={{ padding: "16px 20px", textAlign: "center", fontWeight: "600", fontSize: "14px" }}>{cs?.overCount || 0}<br/><span style={{ fontSize: "12px", color: "#64748b" }}>({cs?.totalOrders > 0 ? ((cs.overCount / cs.totalOrders) * 100).toFixed(1) : 0}%)</span></td>
                       <td style={{ padding: "16px 20px", textAlign: "center", fontWeight: "600", fontSize: "14px" }}>{cs?.underCount || 0}<br/><span style={{ fontSize: "12px", color: "#64748b" }}>({cs?.totalOrders > 0 ? ((cs.underCount / cs.totalOrders) * 100).toFixed(1) : 0}%)</span></td>
-                      <td style={{ padding: "16px 20px", textAlign: "center" }}><button onClick={() => onCityClick(cs?.city)} style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", padding: "8px 20px", fontSize: "13px", fontWeight: "700", border: "none", borderRadius: "12px", cursor: "pointer", boxShadow: "0 6px 20px rgba(102, 126, 234, 0.35)" }}>View</button></td>
+                      <td style={{ padding: "16px 20px", textAlign: "center" }}><button onClick={() =>
+  onCityClick(cs.city.toString().trim().toLowerCase())
+}style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", padding: "8px 20px", fontSize: "13px", fontWeight: "700", border: "none", borderRadius: "12px", cursor: "pointer", boxShadow: "0 6px 20px rgba(102, 126, 234, 0.35)" }}>View</button></td>
                     </tr>
                   ))}
                 </tbody>
