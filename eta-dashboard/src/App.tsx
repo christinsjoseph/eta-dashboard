@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import OverviewPage from "./pages/OverviewPage";
 import CityDetailPage from "./pages/CityDetailPage";
 import { parseEtaCsv } from "./data/csvParser";
@@ -25,6 +25,9 @@ export default function App() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [mongoLoading, setMongoLoading] = useState(false);
+  const [collections, setCollections] = useState<string[]>([]);
+const [selectedCollection, setSelectedCollection] = useState("");
+
 
   const mergedRecords = useMemo(
     () => sources.filter((s) => appliedIds.includes(s.id)).flatMap((s) => s.records),
@@ -40,7 +43,17 @@ export default function App() {
     // Otherwise aggregate from CSV records
     return aggregateByCity(mergedRecords);
   }, [sources, appliedIds, mergedRecords]);
-
+useEffect(() => {
+  fetch(`${import.meta.env.VITE_API_BASE}/api/eta/collections`)
+    .then(res => res.json())
+    .then(data => {
+      setCollections(data.collections || []);
+    })
+    .catch(err => {
+      console.error("Failed to load collections", err);
+      setCollections([]);
+    });
+}, []);
   function uploadCsv(file: File) {
     parseEtaCsv(file, (parsed) => {
       setSources((prev) => [
@@ -55,19 +68,21 @@ export default function App() {
   }
 
   async function importMongo() {
-    if (!fromDate || !toDate) return;
+   if (!fromDate || !toDate || !selectedCollection) return;
     setMongoLoading(true);
     try {
       // First, fetch aggregated data (fast)
-      const res = await fetch("http://localhost:4000/api/eta", {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/eta`, {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fromRunId: runIdFromDate(fromDate),
-          toRunId: runIdFromDate(toDate, true),
-         mode: "full", // Get actual records
-limit: 500000,  // Fast mode for overview
-        }),
+  fromRunId: runIdFromDate(fromDate),
+  toRunId: runIdFromDate(toDate, true),
+  collectionName: selectedCollection,
+  mode: "full",
+  limit: 500000,
+}),
       });
       const response = await res.json();
       
@@ -75,7 +90,8 @@ limit: 500000,  // Fast mode for overview
   ...prev,
   {
     id: `mongo-${Date.now()}`,
-    name: `${response.collectionName} (${fromDate} → ${toDate})`,
+   name: `${selectedCollection} (${fromDate} → ${toDate})`,
+
     records: response.data || [], // Use actual records
     totalRecords: response.data?.length || 0,
   },
@@ -420,6 +436,48 @@ limit: 500000,  // Fast mode for overview
                 >
                   Connect to your database and fetch records by date range
                 </p>
+                {collections.length > 0 && (
+  <div>
+    <label
+      style={{
+        display: "block",
+        fontSize: "13px",
+        fontWeight: "700",
+        color: "#475569",
+        marginBottom: "10px",
+        textAlign: "left",
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+      }}
+    >
+      Select Collection
+    </label>
+
+    <select
+      value={selectedCollection}
+      onChange={(e) => setSelectedCollection(e.target.value)}
+      style={{
+        padding: "16px 20px",
+        borderRadius: "14px",
+        border: "2px solid rgba(203, 213, 225, 0.4)",
+        background: "rgba(255, 255, 255, 0.9)",
+        width: "100%",
+        fontSize: "15px",
+        fontWeight: "600",
+        color: "#0f172a",
+        outline: "none",
+      }}
+    >
+      <option value="">-- Select collection --</option>
+      {collections.map((c) => (
+        <option key={c} value={c}>
+          {c}
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+
                 <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                   <div>
                     <label
@@ -523,7 +581,7 @@ limit: 500000,  // Fast mode for overview
                       marginTop: "8px",
                     }}
                     className={!fromDate || !toDate || mongoLoading ? "" : "primary-btn"}
-                    disabled={!fromDate || !toDate || mongoLoading}
+                    disabled={!fromDate || !toDate || !selectedCollection || mongoLoading}
                     onClick={importMongo}
                   >
                     {mongoLoading ? (

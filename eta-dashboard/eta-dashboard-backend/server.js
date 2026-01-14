@@ -12,8 +12,8 @@ app.use(cors());
 app.use(express.json());
 
 const MONGO_URL = "mongodb://localhost:27017";
-const DB_NAME = "eta_dashboard";
-const COLLECTION = "eta_records";
+const DB_NAME = "eta_dashboard";   // ✅ ADD
+
 
 const client = new MongoClient(MONGO_URL);
 
@@ -21,7 +21,6 @@ await client.connect();
 console.log("✅ MongoDB connected");
 
 const db = client.db(DB_NAME);
-const collection = db.collection(COLLECTION);
 
 /* =============================
    CREATE INDEXES FOR PERFORMANCE
@@ -66,12 +65,27 @@ function deriveTimeBucket(runId) {
   return "Midnight";
 }
 
+
 /* =============================
    API: FETCH ETA DATA
    ============================= */
 app.post("/api/eta", async (req, res) => {
   try {
-    const { fromRunId, toRunId, mode = "full", limit = 10000, page = 1 } = req.body;
+    const {
+  fromRunId,
+  toRunId,
+  collectionName,
+  mode = "full",
+  limit = 10000,
+  page = 1
+} = req.body;
+
+if (!collectionName) {
+  return res.status(400).json({ error: "collectionName is required" });
+}
+
+const collection = db.collection(collectionName);
+
     const startTime = Date.now();
 
     const matchQuery = {};
@@ -196,7 +210,7 @@ app.post("/api/eta", async (req, res) => {
       }));
 
       return res.json({
-        collectionName: COLLECTION,
+        collectionName,
         mode: "aggregated",
         cityStats,
         totalRecords: cityStats.reduce((s, c) => s + c.totalOrders, 0),
@@ -248,7 +262,7 @@ app.post("/api/eta", async (req, res) => {
     });
 
     res.json({
-      collectionName: COLLECTION,
+      collectionName,
       mode: "full",
       data,
       pagination: {
@@ -264,7 +278,7 @@ app.post("/api/eta", async (req, res) => {
   } catch (err) {
     console.error("❌ /api/eta failed:", err);
     res.status(500).json({
-      collectionName: COLLECTION,
+      collectionName,
       data: [],
       error: err.message
     });
@@ -332,7 +346,7 @@ app.post("/api/eta/average-variation", async (req, res) => {
     const [result] = await collection.aggregate(pipeline).toArray();
 
     res.json({
-      collectionName: COLLECTION,
+      collectionName,
       mode: "average-variation",
       data: result || {
         Mappls_Duration_vs_Google_Duration_percentage: 0,
@@ -345,7 +359,7 @@ app.post("/api/eta/average-variation", async (req, res) => {
   } catch (err) {
     console.error("❌ /api/eta/average-variation failed:", err);
     res.status(500).json({
-      collectionName: COLLECTION,
+      collectionName,
       data: {},
       error: err.message
     });
@@ -356,6 +370,26 @@ app.post("/api/eta/average-variation", async (req, res) => {
    START SERVER
    ============================= */
 const PORT = 4000;
-app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+/* =============================
+   API: LIST ETA COLLECTIONS
+   ============================= */
+app.get("/api/eta/collections", async (req, res) => {
+  try {
+    const collections = await db.listCollections().toArray();
+
+    const etaCollections = collections
+      .map(c => c.name)
+      .filter(name => name.startsWith("eta_"));
+
+    res.json({
+      collections: etaCollections
+    });
+  } catch (err) {
+    console.error("❌ /api/eta/collections failed:", err);
+    res.status(500).json({ collections: [] });
+  }
+});
+
+app.listen(4000, "0.0.0.0", () => {
+  console.log("🚀 Backend running on http://0.0.0.0:4000");
 });
