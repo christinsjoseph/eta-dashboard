@@ -4,6 +4,8 @@ import CityDetailPage from "./pages/CityDetailPage";
 import { parseEtaCsv } from "./data/csvParser";
 import { aggregateByCity } from "./data/aggregations";
 import type { EtaRecord } from "./types/eta";
+import ComparisonPage from "./pages/ComparisonPage";
+
 
 type Source = {
   id: string;
@@ -22,6 +24,9 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  // 🔁 Comparison mode state
+const [comparisonIds, setComparisonIds] = useState<string[]>([]);
+const [comparisonMode, setComparisonMode] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [mongoLoading, setMongoLoading] = useState(false);
@@ -116,16 +121,16 @@ useEffect(() => {
       });
       const response = await res.json();
       
-      setSources((prev) => [
-  ...prev,
-  {
+      setSources((prev) => {
+  const newSource = {
     id: `mongo-${Date.now()}`,
-   name: `${selectedCollection} (${fromDate} → ${toDate})`,
-
-    records: response.data || [], // Use actual records
+    name: `${selectedCollection} (${fromDate} → ${toDate})`,
+    records: response.data || [],
     totalRecords: response.data?.length || 0,
-  },
-]);
+  };
+  return [...prev, newSource];
+});
+
     } catch (e) {
       console.error("Failed to fetch Mongo data:", e);
       alert("Failed to fetch Mongo data");
@@ -135,9 +140,10 @@ useEffect(() => {
   }
 
   function applyAnalysis() {
-    setAppliedIds(selectedIds);
-    setSelectedCity(null);
-  }
+  setAppliedIds([...selectedIds]);
+  setSelectedIds([]); 
+  setSelectedCity(null);
+}
 
   function removeSource(id: string) {
     setSources((prev) => prev.filter((s) => s.id !== id));
@@ -157,6 +163,25 @@ useEffect(() => {
       .filter(s => appliedIds.includes(s.id))
       .reduce((sum, s) => sum + (s.totalRecords || s.records.length), 0);
   }, [sources, appliedIds]);
+if (comparisonMode) {
+  const [leftId, rightId] = comparisonIds;
+
+  const leftSource = sources.find((s) => s.id === leftId);
+  const rightSource = sources.find((s) => s.id === rightId);
+
+  if (!leftSource || !rightSource) return null;
+
+  return (
+    <ComparisonPage
+      leftSource={leftSource}
+      rightSource={rightSource}
+      onBack={() => {
+  setComparisonMode(false);
+  setSelectedIds([]); // ✅ ADD THIS
+}}
+    />
+  );
+}
 
   if (selectedCity) {
   const cityRecords = mergedRecords.filter((r) => {
@@ -178,8 +203,6 @@ console.log("Sample city record:", cityRecords[0]);
 
   );
 }
-
-
   if (appliedIds.length > 0) {
     return (
       <OverviewPage
@@ -193,7 +216,6 @@ console.log("Sample city record:", cityRecords[0]);
       />
     );
   }
-
   return (
     <div
       style={{
@@ -654,153 +676,186 @@ console.log("Sample city record:", cityRecords[0]);
             </div>
 
             {/* Loaded Sources Section */}
-            {sources.length > 0 && (
-              <div
-                style={{
-                  borderTop: "2px solid rgba(226, 232, 240, 0.5)",
-                  paddingTop: "64px",
-                  animation: "slideUp 0.6s ease-out",
-                }}
-              >
-                <div style={{ textAlign: "center", marginBottom: "40px" }}>
-                  <h3
-                    style={{
-                      fontSize: "32px",
-                      fontWeight: "800",
-                      color: "#0f172a",
-                      marginBottom: "12px",
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    Loaded Sources
-                  </h3>
-                  <p style={{ fontSize: "16px", color: "#64748b", fontWeight: "500" }}>
-                    Select data sources to include in your analysis
-                  </p>
-                </div>
+{sources.length > 0 && (
+  <div
+    style={{
+      borderTop: "2px solid rgba(226, 232, 240, 0.5)",
+      paddingTop: "64px",
+      animation: "slideUp 0.6s ease-out",
+    }}
+  >
+    <div style={{ textAlign: "center", marginBottom: "40px" }}>
+      <h3
+        style={{
+          fontSize: "32px",
+          fontWeight: "800",
+          color: "#0f172a",
+          marginBottom: "12px",
+          letterSpacing: "-0.02em",
+        }}
+      >
+        Loaded Sources
+      </h3>
+      <p style={{ fontSize: "16px", color: "#64748b", fontWeight: "500" }}>
+        Select data sources to include in your analysis
+      </p>
+    </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gap: "16px",
-                    marginBottom: "48px",
-                    maxWidth: "900px",
-                    margin: "0 auto 48px",
-                  }}
-                >
-                  {sources.map((s) => (
-                    <div
-                      key={s.id}
-                      className="source-card"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "24px",
-                        padding: "24px 28px",
-                        background: selectedIds.includes(s.id)
-                          ? "linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.06) 100%)"
-                          : "rgba(255, 255, 255, 0.7)",
-                        borderRadius: "20px",
-                        border: selectedIds.includes(s.id)
-                          ? "2px solid rgba(59, 130, 246, 0.5)"
-                          : "2px solid rgba(226, 232, 240, 0.5)",
-                        cursor: "pointer",
-                        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                        boxShadow: selectedIds.includes(s.id)
-                          ? "0 12px 40px rgba(59, 130, 246, 0.15)"
-                          : "0 8px 24px rgba(0, 0, 0, 0.04)",
-                      }}
-                      onClick={() =>
-                        setSelectedIds((prev) =>
-                          prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id]
-                        )
-                      }
-                    >
-                      <div
-                        style={{
-                          width: "24px",
-                          height: "24px",
-                          borderRadius: "8px",
-                          border: `3px solid ${selectedIds.includes(s.id) ? "#3b82f6" : "#cbd5e1"}`,
-                          background: selectedIds.includes(s.id) ? "#3b82f6" : "white",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                          transition: "all 0.2s ease",
-                        }}
-                      >
-                        {selectedIds.includes(s.id) && (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                        )}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: "17px", fontWeight: "700", color: "#0f172a", marginBottom: "4px" }}>
-                          {s.name}
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#64748b", fontWeight: "600" }}>
-                          {(s.totalRecords || s.records.length).toLocaleString()} records loaded
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeSource(s.id);
-                        }}
-                        className="delete-btn"
-                        style={{
-                          background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                          color: "white",
-                          border: "none",
-                          width: "44px",
-                          height: "44px",
-                          borderRadius: "14px",
-                          fontSize: "24px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontWeight: "600",
-                          boxShadow: "0 8px 24px rgba(239, 68, 68, 0.3)",
-                          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
+    {/* Sources List */}
+    <div
+      style={{
+        display: "grid",
+        gap: "16px",
+        marginBottom: "48px",
+        maxWidth: "900px",
+        margin: "0 auto 48px",
+      }}
+    >
+      {sources.map((s) => (
+  <div
+    key={s.id}
+    className="source-card"
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "24px",
+      padding: "24px 28px",
+      background: selectedIds.includes(s.id)
+  ? "linear-gradient(135deg, rgba(59,130,246,0.12), rgba(37,99,235,0.06))"
+  : "rgba(255,255,255,0.7)",
+      borderRadius: "20px",
+      border: "2px solid rgba(226,232,240,0.6)",
+      cursor: "pointer",
+    }}
+    onClick={() =>
+      setSelectedIds((prev) =>
+        prev.includes(s.id)
+          ? prev.filter((x) => x !== s.id)
+          : [...prev, s.id]
+      )
+    }
+  >
+    {/* ✅ Selection Checkbox */}
+<div
+  style={{
+    width: "24px",
+    height: "24px",
+    borderRadius: "6px",
+    border: selectedIds.includes(s.id)
+      ? "3px solid #3b82f6"
+      : "3px solid #cbd5e1",
+    background: selectedIds.includes(s.id) ? "#3b82f6" : "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  }}
+>
+  {selectedIds.includes(s.id) && (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      strokeWidth="4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )}
+</div>
 
-                <div style={{ textAlign: "center" }}>
-                  <button
-                    style={{
-                      background: selectedIds.length === 0
-                        ? "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)"
-                        : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      color: "white",
-                      fontWeight: "700",
-                      padding: "20px 56px",
-                      borderRadius: "18px",
-                      border: "none",
-                      cursor: selectedIds.length === 0 ? "not-allowed" : "pointer",
-                      fontSize: "17px",
-                      letterSpacing: "0.02em",
-                      boxShadow: selectedIds.length === 0
-                        ? "0 12px 32px rgba(148, 163, 184, 0.3)"
-                        : "0 16px 48px rgba(102, 126, 234, 0.4)",
-                      transition: "all 0.3s ease",
-                    }}
-                    className={selectedIds.length === 0 ? "" : "primary-btn"}
-                    disabled={selectedIds.length === 0}
-                    onClick={applyAnalysis}
-                  >
-                    Create Analysis Report ({selectedIds.length} source{selectedIds.length !== 1 ? "s" : ""})
-                  </button>
-                </div>
-              </div>
-            )}
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: "16px", fontWeight: 700 }}>
+        {s.name}
+      </div>
+      <div style={{ fontSize: "13px", color: "#64748b" }}>
+        {(s.totalRecords || s.records.length).toLocaleString()} records
+      </div>
+    </div>
+
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        removeSource(s.id);
+      }}
+      style={{
+        background: "#ef4444",
+        color: "white",
+        border: "none",
+        borderRadius: "10px",
+        width: "36px",
+        height: "36px",
+        fontSize: "20px",
+        cursor: "pointer",
+      }}
+    >
+      ×
+    </button>
+  </div>
+))}
+
+    </div>
+
+    {/* Action Buttons */}
+   <div
+  style={{
+    display: "flex",
+    justifyContent: "center",
+    gap: "24px",
+    marginTop: "16px",
+    flexWrap: "wrap",
+  }}
+>
+  {/* Primary Action – Analysis */}
+  {/* Create Analysis */}
+<button
+  disabled={selectedIds.length === 0}
+  onClick={applyAnalysis}
+  style={{
+    background:
+      selectedIds.length === 0
+        ? "#cbd5e1"
+        : "linear-gradient(135deg, #667eea, #764ba2)",
+    color: "white",
+    fontWeight: 700,
+    padding: "16px 36px",
+    borderRadius: "16px",
+    border: "none",
+    cursor: selectedIds.length === 0 ? "not-allowed" : "pointer",
+  }}
+>
+  Create Analysis Report ({selectedIds.length})
+</button>
+
+{/* Compare ONLY when exactly 2 selected */}
+{selectedIds.length === 2 && (
+  <button
+    onClick={() => {
+      setComparisonIds(selectedIds);
+      setComparisonMode(true);
+    }}
+    style={{
+      background: "linear-gradient(135deg, #f97316, #ea580c)",
+      color: "white",
+      fontWeight: 700,
+      padding: "16px 36px",
+      borderRadius: "16px",
+      border: "none",
+      cursor: "pointer",
+    }}
+  >
+    Compare Selected Imports
+  </button>
+)}
+
+</div>
+
+  </div>
+)}
+
           </div>
         </div>
 
