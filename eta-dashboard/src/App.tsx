@@ -27,6 +27,11 @@ export default function App() {
   const [mongoLoading, setMongoLoading] = useState(false);
   const [collections, setCollections] = useState<string[]>([]);
 const [selectedCollection, setSelectedCollection] = useState("");
+const [collectionRange, setCollectionRange] = useState<{
+  minDate: string;
+  maxDate: string;
+} | null>(null);
+
 
 
   const mergedRecords = useMemo(
@@ -54,6 +59,31 @@ useEffect(() => {
       setCollections([]);
     });
 }, []);
+// 🔽 AUTO-FETCH DATE RANGE WHEN COLLECTION CHANGES
+useEffect(() => {
+  if (!selectedCollection) {
+    setCollectionRange(null);
+    setFromDate("");
+    setToDate("");
+    return;
+  }
+
+  fetch(
+    `${import.meta.env.VITE_API_BASE}/api/eta/collection-range?collectionName=${selectedCollection}`
+  )
+    .then((res) => res.json())
+    .then(({ minDate, maxDate }) => {
+      if (minDate && maxDate) {
+        setCollectionRange({ minDate, maxDate });
+      }
+    })
+    .catch((err) => {
+      console.error("Failed to fetch collection date range", err);
+      setCollectionRange(null);
+    });
+}, [selectedCollection]);
+
+
   function uploadCsv(file: File) {
     parseEtaCsv(file, (parsed) => {
       setSources((prev) => [
@@ -487,6 +517,27 @@ console.log("Sample city record:", cityRecords[0]);
         </option>
       ))}
     </select>
+    {collectionRange && (
+  <div
+    style={{
+      marginTop: "8px",
+      fontSize: "13px",
+      color: "#64748b",
+      fontWeight: "600",
+      textAlign: "left",
+    }}
+  >
+    Available data range:&nbsp;
+    <strong style={{ color: "#0f172a" }}>
+      {collectionRange.minDate}
+    </strong>{" "}
+    →{" "}
+    <strong style={{ color: "#0f172a" }}>
+      {collectionRange.maxDate}
+    </strong>
+  </div>
+)}
+
   </div>
 )}
 
@@ -507,30 +558,25 @@ console.log("Sample city record:", cityRecords[0]);
                       From Date
                     </label>
                     <input
-                      type="date"
-                      value={fromDate}
-                      onChange={(e) => setFromDate(e.target.value)}
-                      style={{
-                        padding: "16px 20px",
-                        borderRadius: "14px",
-                        border: "2px solid rgba(203, 213, 225, 0.4)",
-                        background: "rgba(255, 255, 255, 0.9)",
-                        width: "100%",
-                        fontSize: "15px",
-                        fontWeight: "600",
-                        color: "#0f172a",
-                        outline: "none",
-                        transition: "all 0.2s ease",
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = "#10b981";
-                        e.target.style.boxShadow = "0 0 0 4px rgba(16, 185, 129, 0.1)";
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "rgba(203, 213, 225, 0.4)";
-                        e.target.style.boxShadow = "none";
-                      }}
-                    />
+  type="date"
+  value={fromDate}
+  min={collectionRange?.minDate}
+  max={collectionRange?.maxDate}
+  onChange={(e) => setFromDate(e.target.value)}
+  style={{
+    padding: "16px 20px",
+    borderRadius: "14px",
+    border: "2px solid rgba(203, 213, 225, 0.4)",
+    background: "rgba(255, 255, 255, 0.9)",
+    width: "100%",
+    fontSize: "15px",
+    fontWeight: "600",
+    color: "#0f172a",
+    outline: "none",
+    transition: "all 0.2s ease",
+  }}
+/>
+
                   </div>
                   <div>
                     <label
@@ -548,30 +594,25 @@ console.log("Sample city record:", cityRecords[0]);
                       To Date
                     </label>
                     <input
-                      type="date"
-                      value={toDate}
-                      onChange={(e) => setToDate(e.target.value)}
-                      style={{
-                        padding: "16px 20px",
-                        borderRadius: "14px",
-                        border: "2px solid rgba(203, 213, 225, 0.4)",
-                        background: "rgba(255, 255, 255, 0.9)",
-                        width: "100%",
-                        fontSize: "15px",
-                        fontWeight: "600",
-                        color: "#0f172a",
-                        outline: "none",
-                        transition: "all 0.2s ease",
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = "#10b981";
-                        e.target.style.boxShadow = "0 0 0 4px rgba(16, 185, 129, 0.1)";
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "rgba(203, 213, 225, 0.4)";
-                        e.target.style.boxShadow = "none";
-                      }}
-                    />
+  type="date"
+  value={toDate}
+  min={collectionRange?.minDate}
+  max={collectionRange?.maxDate}
+  onChange={(e) => setToDate(e.target.value)}
+  style={{
+    padding: "16px 20px",
+    borderRadius: "14px",
+    border: "2px solid rgba(203, 213, 225, 0.4)",
+    background: "rgba(255, 255, 255, 0.9)",
+    width: "100%",
+    fontSize: "15px",
+    fontWeight: "600",
+    color: "#0f172a",
+    outline: "none",
+    transition: "all 0.2s ease",
+  }}
+/>
+
                   </div>
                   <button
                     style={{

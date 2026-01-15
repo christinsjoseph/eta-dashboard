@@ -27,14 +27,23 @@ const db = client.db(DB_NAME);
    ============================= */
 async function createIndexes() {
   try {
-    await collection.createIndex({ RunID: 1 });
-    await collection.createIndex({ City: 1 });
-    await collection.createIndex({ RunID: 1, City: 1 });
+    const collections = await db.listCollections().toArray();
+
+    for (const c of collections) {
+      if (!c.name.startsWith("eta_")) continue;
+
+      const col = db.collection(c.name);
+      await col.createIndex({ RunID: 1 });
+      await col.createIndex({ City: 1 });
+      await col.createIndex({ RunID: 1, City: 1 });
+    }
+
     console.log("✅ Database indexes created/verified");
-  } catch {
-    console.log("⚠️ Index creation skipped");
+  } catch (err) {
+    console.log("⚠️ Index creation skipped", err.message);
   }
 }
+
 await createIndexes();
 
 /* =============================
@@ -387,6 +396,50 @@ app.get("/api/eta/collections", async (req, res) => {
   } catch (err) {
     console.error("❌ /api/eta/collections failed:", err);
     res.status(500).json({ collections: [] });
+  }
+});
+/* =============================
+   API: COLLECTION DATE RANGE
+   ============================= */
+app.get("/api/eta/collection-range", async (req, res) => {
+  try {
+    const { collectionName } = req.query;
+
+    if (!collectionName) {
+      return res.status(400).json({ error: "collectionName is required" });
+    }
+
+    const collection = db.collection(collectionName);
+
+    const [result] = await collection.aggregate([
+      {
+        $project: {
+          runDate: { $substr: ["$RunID", 0, 8] } // YYYYMMDD
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          minDate: { $min: "$runDate" },
+          maxDate: { $max: "$runDate" }
+        }
+      }
+    ]).toArray();
+
+    if (!result) {
+      return res.json({ minDate: null, maxDate: null });
+    }
+
+    const format = (d) =>
+      `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+
+    res.json({
+      minDate: format(result.minDate),
+      maxDate: format(result.maxDate)
+    });
+  } catch (err) {
+    console.error("❌ /api/eta/collection-range failed:", err);
+    res.status(500).json({ minDate: null, maxDate: null });
   }
 });
 
