@@ -19,12 +19,9 @@ const ALL_FLAGS: ComparisonFlag[] = ["Similar", "Underestimate", "Overestimate"]
 
 type Props = {
   city: string;
-  cities: string[];
-  onCityChange: (city: string) => void;
   records: EtaRecord[];
   onBack: () => void;
 };
-
 
 function getTimeBucket(runId: string): TimeBucket {
   const digits = runId.replace(/\D/g, "");
@@ -89,69 +86,7 @@ color: colored
 </div>
 );
 }
-function CityScroller({
-  cities,
-  activeCity,
-  onSelect,
-}: {
-  cities: string[];
-  activeCity: string;
-  onSelect: (city: string) => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: "10px",
-        overflowX: "auto",
-        paddingBottom: "6px",
-        maxWidth: "520px",
-        scrollbarWidth: "thin",
-      }}
-    >
-      {cities.map((c) => (
-        <button
-          key={c}
-          onClick={() => onSelect(c)}
-          style={{
-            flexShrink: 0,
-            padding: "8px 16px",
-            borderRadius: "999px",
-            border:
-              c === activeCity
-                ? "2px solid #6366f1"
-                : "1px solid #e5e7eb",
-            background:
-              c === activeCity
-                ? "linear-gradient(135deg, #6366f1, #4f46e5)"
-                : "rgba(255,255,255,0.9)",
-            color: c === activeCity ? "white" : "#1f2937",
-            fontWeight: 700,
-            fontSize: "13px",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            boxShadow:
-              c === activeCity
-                ? "0 8px 24px rgba(99,102,241,0.4)"
-                : "0 2px 8px rgba(0,0,0,0.05)",
-            transition: "all 0.2s ease",
-          }}
-        >
-          {c}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export default function CityDetailPage({
-  city,
-  cities,
-  onCityChange,
-  records,
-  onBack,
-}: Props) {
-
+export default function CityDetailPage({ city, records, onBack }: Props) {
   const [comparison, setComparison] = useState<"mappls" | "oauth2">("mappls");
   // 🔽 STEP 4: active city inside CityDetail page
 const [activeCity, setActiveCity] = useState(
@@ -207,7 +142,7 @@ const cityFilteredRecords = useMemo(() => {
 
       const variation =
         google > 0 && provider > 0
-          ? (1-provider / google) * 100
+          ? ((provider - google) / google) * 100
           : 0;
 
       return {
@@ -358,7 +293,6 @@ const sortedExpandedTableData = useMemo(() => {
     setSortOrder("desc");
   }
 };
-const comparisonLabel = comparison === "mappls" ? "Mappls" : "Oauth2";
 const exportExpandedTableCSV = () => {
   const headers = [
     "UID",
@@ -434,10 +368,7 @@ const exportExpandedTableCSV = () => {
     });
   }, [filteredRecords]);
 
-<<<<<<< HEAD
   const comparisonLabel = comparison === "mappls" ? "Oauth1" : "Oauth2";
-=======
->>>>>>> f05bd7b88e4b61c618a3b5a3683e063440b2f7a1
 
   const glass: React.CSSProperties = {
     background: "rgba(255,255,255,0.7)",
@@ -481,11 +412,14 @@ const exportExpandedTableCSV = () => {
 
   /* 🔒 Sticky header */
   position: "sticky",
-  top: 0,
+  top: 96,
   background: "rgba(248,250,252,0.95)",
   zIndex: 30,
   backdropFilter: "blur(6px)",
 };
+
+
+
   return (
     <div
       style={{
@@ -817,23 +751,15 @@ const exportExpandedTableCSV = () => {
               padding: "32px",
               display: "flex",
               flexDirection: "column",
-               overflow: "auto",
+              overflowY: "auto",
             }}
           >
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
               <div>
                 <h2 style={{ margin: "0 0 8px 0", fontSize: "2rem", fontWeight: 800, color: "#111827", letterSpacing: "-0.02em" }}>
-                  {comparisonLabel} vs Google ETA — Full View
+                  {comparisonLabel} vs Google ETA — Full View ({city})
                 </h2>
-                
-                {/* City Selector */}
-<CityScroller
-  cities={cities}
-  activeCity={city}
-  onSelect={onCityChange}
-/>
-{/* Comparison Selector */}
                 <select
   value={activeCity}
   onChange={(e) => setActiveCity(e.target.value)}
@@ -1088,14 +1014,13 @@ const exportExpandedTableCSV = () => {
     flex: "1 1 auto",
     display: "flex",
     flexDirection: "column",
-    minHeight: "800px",
+    minHeight: "800px", // 🔴 VERY IMPORTANT
   }}
 >
-
-{/* Chart */}
+            {/* Chart */}
 <div
   style={{
-    flex: "0 0 55%",
+    flex: "0 0 55%",   // chart takes ~55%
     minHeight: "420px",
     marginBottom: "20px",
   }}
@@ -1171,8 +1096,7 @@ name="Google ETA"
   }}
 >
 
-
- <div
+         <div
   style={{
     position: "sticky",
     top: 0,
@@ -1183,61 +1107,77 @@ name="Google ETA"
     borderBottom: "1px solid #e5e7eb",
   }}
 >
-  <div style={{ position: "absolute", right: 16, top: 12, display: "flex", gap: "8px" }}>
-    <button
-      onClick={exportExpandedTableCSV}
-      style={{
-        padding: "6px 12px",
-        fontSize: "12px",
-        fontWeight: 700,
-        borderRadius: "10px",
-        border: "1px solid #c7d2fe",
-        background: "white",
-        cursor: "pointer",
-      }}
-    >
-      Export CSV
-    </button>
-
-    <button
-      onClick={() => setIsTableExpanded(!isTableExpanded)}
-      style={{
-        padding: "6px 12px",
-        fontSize: "12px",
-        fontWeight: 700,
-        borderRadius: "10px",
-        border: "1px solid #c7d2fe",
-        background: "white",
-        cursor: "pointer",
-      }}
-    >
-      {isTableExpanded ? "Close Table" : "Expand Table"}
-    </button>
-  </div>
-
-  <div
+  <button
+  onClick={() => setIsTableExpanded(!isTableExpanded)}
+  style={{
+    position: "absolute",
+    right: 16,
+    top: 12,
+    padding: "6px 12px",
+    fontSize: "12px",
+    fontWeight: 700,
+    borderRadius: "10px",
+    border: "1px solid #c7d2fe",
+    background: "white",
+    cursor: "pointer",
+  }}
+>
+  {isTableExpanded ? "Close Table" : "Expand Table"}
+</button>
+<div style={{ position: "absolute", right: 16, top: 12, display: "flex", gap: "8px" }}>
+  <button
+    onClick={exportExpandedTableCSV}
     style={{
-      display: "flex",
-      justifyContent: "center",
-      gap: "12px",
-      marginBottom: "8px",
+      padding: "6px 12px",
+      fontSize: "12px",
+      fontWeight: 700,
+      borderRadius: "10px",
+      border: "1px solid #c7d2fe",
+      background: "white",
+      cursor: "pointer",
     }}
   >
-    <input
-      type="text"
-      placeholder="Search UID..."
-      value={uidSearch}
-      onChange={(e) => setUidSearch(e.target.value)}
-      style={{
-        padding: "6px 10px",
-        borderRadius: "8px",
-        border: "1px solid #cbd5e1",
-        fontSize: "13px",
-        width: "220px",
-        outline: "none",
-      }}
-    />
-  </div>
+    Export CSV
+  </button>
+
+  <button
+    onClick={() => setIsTableExpanded(!isTableExpanded)}
+    style={{
+      padding: "6px 12px",
+      fontSize: "12px",
+      fontWeight: 700,
+      borderRadius: "10px",
+      border: "1px solid #c7d2fe",
+      background: "white",
+      cursor: "pointer",
+    }}
+  >
+    {isTableExpanded ? "Close Table" : "Expand Table"}
+  </button>
+</div>
+<div
+  style={{
+    display: "flex",
+    justifyContent: "center",
+    gap: "12px",
+    marginBottom: "8px",
+  }}
+>
+  <input
+    type="text"
+    placeholder="Search UID..."
+    value={uidSearch}
+    onChange={(e) => setUidSearch(e.target.value)}
+    style={{
+      padding: "6px 10px",
+      borderRadius: "8px",
+      border: "1px solid #cbd5f5",
+      fontSize: "13px",
+      width: "220px",
+      outline: "none",
+    }}
+  />
+</div>
 
   <h3
     style={{
@@ -1257,24 +1197,31 @@ name="Google ETA"
       Unique UIDs: {sortedExpandedTableData.length}
     </span>
   </h3>
-</div>
-
-{/* TABLE SCROLLER — ONLY THIS DIV SCROLLS */}
-<div
-  style={{
-    overflowY: isTableExpanded ? "visible" : "auto",  // ✅ Changed from just "auto"
-    maxHeight: isTableExpanded ? "none" : "450px",
-  }}
->
-
-  <table
+  <div style={{ textAlign: "center", marginTop: "6px" }}>
+  <button
+    onClick={() => setIsTableExpanded(true)}
     style={{
-      width: "100%",
-      borderCollapse: "collapse",
-      fontSize: "14px",
+      background: "white",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      padding: "6px 12px",
+      fontSize: "12px",
+      fontWeight: 600,
+      cursor: "pointer",
     }}
   >
+  </button>
+</div>
 
+</div>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "14px",
+              marginTop: 56,
+            }}
+          >
             <thead>
   <tr
   style={{
@@ -1354,13 +1301,11 @@ name="Google ETA"
               ))}
             </tbody>
           </table>
-          </div>
-          </div>
         </div>
       </div>
+      </div>
     )}
-        </div>
-    </div>
+  </div>
+  </div>
   );
 }
-

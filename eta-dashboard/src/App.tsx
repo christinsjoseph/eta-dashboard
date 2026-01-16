@@ -163,17 +163,46 @@ useEffect(() => {
       .filter(s => appliedIds.includes(s.id))
       .reduce((sum, s) => sum + (s.totalRecords || s.records.length), 0);
   }, [sources, appliedIds]);
+if (comparisonMode) {
+  const [leftId, rightId] = comparisonIds;
+
+  const leftSource = sources.find((s) => s.id === leftId);
+  const rightSource = sources.find((s) => s.id === rightId);
+
+  if (!leftSource || !rightSource) return null;
+
+  return (
+    <ComparisonPage
+      leftSource={leftSource}
+      rightSource={rightSource}
+      onBack={() => {
+  setComparisonMode(false);
+  setSelectedIds([]); // ✅ ADD THIS
+}}
+    />
+  );
+}
 
   if (selectedCity) {
-    return (
-      <CityDetailPage
-        city={selectedCity}
-        records={mergedRecords.filter((r) => r.city === selectedCity)}
-        onBack={() => setSelectedCity(null)}
-      />
-    );
-  }
+  const cityRecords = mergedRecords.filter((r) => {
+    const city =
+      (r.city ?? (r as any).City)?.toString().trim().toLowerCase() || "unknown";
+    return city === selectedCity;
+  });
+console.log("Selected city:", selectedCity);
+console.log("Merged records:", mergedRecords.length);
+console.log("City records:", cityRecords.length);
+console.log("Sample city record:", cityRecords[0]);
 
+  return (
+   <CityDetailPage
+  city={selectedCity}
+  records={mergedRecords}   // ⬅️ PASS ALL RECORDS
+  onBack={() => setSelectedCity(null)}
+/>
+
+  );
+}
   if (appliedIds.length > 0) {
     return (
       <OverviewPage
