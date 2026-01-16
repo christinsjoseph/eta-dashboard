@@ -219,7 +219,7 @@ const oauth2AvgVariation = useMemo(() => {
               <div style={{ fontSize: "44px", fontWeight: "900", color: "#0f172a", letterSpacing: "-0.02em" }}>{totalOrders.toLocaleString()}</div>
             </div>
             <div style={statCard} onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 24px 64px rgba(0, 0, 0, 0.12)"; }} onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 16px 48px rgba(0, 0, 0, 0.08)"; }}>
-              <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em" }}>Mappls Variation</div>
+              <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em" }}>OAuth1 Variation</div>
 <div
   style={{
     fontSize: "44px",
@@ -279,7 +279,7 @@ const oauth2AvgVariation = useMemo(() => {
           <div style={glassCard}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "12px" }}>
               <h3 style={{ fontSize: "26px", fontWeight: "800", color: "#0f172a", margin: 0, letterSpacing: "-0.02em" }}>City Statistics</h3>
-              <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">Mappls vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
+              <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">OAuth1 vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
             </div>
             <p style={{ fontSize: "14px", color: "#64748b", textAlign: "center", marginBottom: "32px", fontWeight: "600" }}>{comparisonLabel} ETA</p>
             <div style={{ overflowX: "auto", maxHeight: "500px", overflowY: "auto" }}>
@@ -317,7 +317,7 @@ const oauth2AvgVariation = useMemo(() => {
           <div style={glassCard}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "12px" }}>
               <h3 style={{ fontSize: "26px", fontWeight: "800", color: "#0f172a", margin: 0, letterSpacing: "-0.02em" }}>Distribution</h3>
-              <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">Mappls vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
+              <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">OAuth1 vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
             </div>
             <p style={{ fontSize: "14px", color: "#64748b", textAlign: "center", marginBottom: "32px", fontWeight: "600" }}>{comparisonLabel} ETA</p>
             <ResponsiveContainer width="100%" height={280}>
@@ -342,7 +342,7 @@ const oauth2AvgVariation = useMemo(() => {
         <div style={glassCard}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px", gap: "12px" }}>
             <h3 style={{ fontSize: "26px", fontWeight: "800", color: "#0f172a", margin: 0, letterSpacing: "-0.02em" }}>City-wise ETA Accuracy</h3>
-            <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">Mappls vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
+            <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}><option value="mappls">OAuth1 vs Google</option><option value="oauth2">Oauth2 vs Google</option></select>
           </div>
           {stackedChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={450}>
@@ -364,7 +364,7 @@ const oauth2AvgVariation = useMemo(() => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "12px" }}>
             <h3 style={{ fontSize: "26px", fontWeight: "800", color: "#0f172a", margin: 0, letterSpacing: "-0.02em" }}>All Records ({totalOrders})</h3>
             <select value={comparison} onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} style={dropdownStyle}>
-              <option value="mappls">Mappls vs Google</option>
+              <option value="mappls">OAuth1 vs Google</option>
               <option value="oauth2">Oauth2 vs Google</option>
             </select>
           </div>
@@ -379,7 +379,7 @@ const oauth2AvgVariation = useMemo(() => {
                   <th style={{ padding: "16px 20px", textAlign: "left", fontWeight: "800", color: "#0f172a", fontSize: "13px", letterSpacing: "0.05em", textTransform: "uppercase" }}>City</th>
                   <th style={{ padding: "16px 20px", textAlign: "center", fontWeight: "800", color: "#0f172a", fontSize: "13px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Google</th>
                   <th style={{ padding: "16px 20px", textAlign: "center", fontWeight: "800", color: "#0f172a", fontSize: "13px", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                    {comparison === "mappls" ? "Mappls" : "Oauth2"}
+                    {comparison === "mappls" ? "OAuth1" : "Oauth2"}
                   </th>
                   <th style={{ padding: "16px 20px", textAlign: "center", fontWeight: "800", color: "#0f172a", fontSize: "13px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Difference</th>
                   <th style={{ padding: "16px 20px", textAlign: "center", fontWeight: "800", color: "#0f172a", fontSize: "13px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Status</th>

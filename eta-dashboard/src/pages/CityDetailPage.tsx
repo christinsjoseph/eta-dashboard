@@ -368,7 +368,7 @@ const exportExpandedTableCSV = () => {
     });
   }, [filteredRecords]);
 
-  const comparisonLabel = comparison === "mappls" ? "Mappls" : "Oauth2";
+  const comparisonLabel = comparison === "mappls" ? "Oauth1" : "Oauth2";
 
   const glass: React.CSSProperties = {
     background: "rgba(255,255,255,0.7)",
@@ -440,7 +440,7 @@ const exportExpandedTableCSV = () => {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
                 <div>
                   <h1 style={{ fontSize: "2.5rem", fontWeight: 800, margin: 0, color: "#111827", letterSpacing: "-0.02em" }}>
-                    {activeCity.toUpperCase()} — ETA Analysis — ETA Analysis
+                    {activeCity.toUpperCase()} — ETA Analysis
                   </h1>
                   <p style={{ color: "#64748b", marginTop: "8px", fontSize: "1.05rem", fontWeight: 500 }}>
                     Showing {filteredRecords.length} of {cityFilteredRecords.length} records
@@ -452,7 +452,7 @@ const exportExpandedTableCSV = () => {
                     onChange={(e) => setComparison(e.target.value as "mappls" | "oauth2")} 
                     style={dropdownStyle}
                   >
-                    <option value="mappls">Mappls vs Google</option>
+                    <option value="mappls">Oauth1 vs Google</option>
                     <option value="oauth2">Oauth2 vs Google</option>
                   </select>
                   <button onClick={onBack} style={btnStyle}>← Back to Cities</button>
@@ -795,7 +795,7 @@ const exportExpandedTableCSV = () => {
     cursor: "pointer",
   }}
 >
-  <option value="mappls">Mappls vs Google</option>
+  <option value="mappls">Oauth1 vs Google</option>
   <option value="oauth2">Oauth2 vs Google</option>
 </select>
 
