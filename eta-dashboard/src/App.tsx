@@ -1,3 +1,8 @@
+import Register from "./pages/Register";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { secureFetch } from "./utils/secureFetch";
 import { useState, useMemo, useEffect } from "react";
 import OverviewPage from "./pages/OverviewPage";
 import CityDetailPage from "./pages/CityDetailPage";
@@ -5,6 +10,27 @@ import { parseEtaCsv } from "./data/csvParser";
 import { aggregateByCity } from "./data/aggregations";
 import type { EtaRecord } from "./types/eta";
 import ComparisonPage from "./pages/ComparisonPage";
+
+function isTokenExpired() {
+  const token = localStorage.getItem("token");
+  if (!token) return true;
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
+function getInitials(name: string = "") {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 
 type Source = {
@@ -19,7 +45,15 @@ function runIdFromDate(date: string, end = false) {
   return date.replaceAll("-", "") + (end ? "_235959" : "_000000");
 }
 
-export default function App() {
+function DashboardApp() {
+useEffect(() => {
+  if (isTokenExpired()) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+  }
+}, []);
+
   const [sources, setSources] = useState<Source[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
@@ -54,7 +88,7 @@ const [collectionRange, setCollectionRange] = useState<{
     return aggregateByCity(mergedRecords);
   }, [sources, appliedIds, mergedRecords]);
 useEffect(() => {
-  fetch(`${import.meta.env.VITE_API_BASE}/api/eta/collections`)
+  secureFetch(`${import.meta.env.VITE_API_BASE}/api/eta/collections`)
     .then(res => res.json())
     .then(data => {
       setCollections(data.collections || []);
@@ -73,9 +107,10 @@ useEffect(() => {
     return;
   }
 
-  fetch(
-    `${import.meta.env.VITE_API_BASE}/api/eta/collection-range?collectionName=${selectedCollection}`
-  )
+  secureFetch(
+  `${import.meta.env.VITE_API_BASE}/api/eta/collection-range?collectionName=${selectedCollection}`
+)
+
     .then((res) => res.json())
     .then(({ minDate, maxDate }) => {
       if (minDate && maxDate) {
@@ -107,7 +142,7 @@ useEffect(() => {
     setMongoLoading(true);
     try {
       // First, fetch aggregated data (fast)
-      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/eta`, {
+      const res = await secureFetch(`${import.meta.env.VITE_API_BASE}/api/eta`, {
 
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -278,6 +313,81 @@ console.log("Sample city record:", cityRecords[0]);
 
       <div style={{ maxWidth: "1400px", margin: "0 auto", position: "relative", zIndex: 1 }}>
         {/* Premium Header */}
+       <div
+  style={{
+    position: "absolute",
+    top: 20,
+    right: 20,
+    display: "flex",
+    gap: 14,
+    alignItems: "center",
+    background: "rgba(255,255,255,0.2)",
+    padding: "10px 14px",
+    borderRadius: 14,
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  }}
+>
+  {(() => {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const name = user.name || "User";
+    const email = user.email || "";
+
+    return (
+      <>
+        {/* Avatar Circle */}
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #667eea, #764ba2)",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: "bold",
+            fontSize: 14,
+          }}
+        >
+          {getInitials(name)}
+        </div>
+
+        {/* Name + Email */}
+        <div style={{ textAlign: "left" }}>
+          <div style={{ color: "white", fontWeight: 600 }}>
+            {name}
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 12 }}>
+            {email}
+          </div>
+        </div>
+
+        {/* Logout */}
+        <button
+          onClick={() => {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            window.location.href = "/login";
+          }}
+          style={{
+            background: "#ef4444",
+            color: "white",
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "none",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Logout
+        </button>
+      </>
+    );
+  })()}
+</div>
+
+
         <div style={{ textAlign: "center", marginBottom: "72px", animation: "slideUp 0.8s ease-out" }}>
           <div style={{
             display: "inline-block",
@@ -867,5 +977,24 @@ console.log("Sample city record:", cityRecords[0]);
         </div>
       </div>
     </div>
+  );
+}
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <DashboardApp />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }

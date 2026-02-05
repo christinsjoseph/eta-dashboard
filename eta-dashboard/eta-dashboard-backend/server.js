@@ -4,6 +4,10 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
+
 
 dotenv.config();
 
@@ -13,6 +17,8 @@ app.use(express.json());
 
 const MONGO_URL = "mongodb://localhost:27017";
 const DB_NAME = "eta_dashboard";   // ✅ ADD
+const JWT_SECRET = "ETA_DASHBOARD_SECRET";
+
 
 
 const client = new MongoClient(MONGO_URL);
@@ -21,6 +27,19 @@ await client.connect();
 console.log("✅ MongoDB connected");
 
 const db = client.db(DB_NAME);
+const usersCollection = db.collection("users");
+const otpCollection = db.collection("otp_store");
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.yourcompany.com",     // 👈 CHANGE THIS
+  port: 587,                       // Usually 587 or 465
+  secure: false,
+  auth: {
+    user: "your-email@domain.com", // 👈 CHANGE THIS
+    pass: "your-email-password",   // 👈 CHANGE THIS
+  },
+});
+
 
 /* =============================
    CREATE INDEXES FOR PERFORMANCE
@@ -74,11 +93,186 @@ function deriveTimeBucket(runId) {
   return "Midnight";
 }
 
+/* =============================
+   AUTHENTICATION APIs
+   ============================= */
+
+// CREATE USER
+app.post("/api/auth/create", async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+
+    const existing = await usersCollection.findOne({ email });
+
+    if (existing) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await usersCollection.insertOne({
+      email,
+      password: hashedPassword,
+      name,
+      createdAt: new Date()
+    });
+
+    res.json({ message: "User created successfully" });
+
+  } catch (err) {
+    res.status(500).json({ message: "Error creating user" });
+  }
+});
+
+
+// LOGIN API
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid password" });
+    }
+
+    const token = jwt.sign(
+      { email: user.email, id: user._id },
+      JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      token,
+      user: {
+        email: user.email,
+        name: user.name
+      }
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: "Login failed" });
+  }
+});
+function authMiddleware(req, res, next) {
+  const header = req.headers["authorization"];
+
+  if (!header) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  const token = header.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+}
+app.post("/api/auth/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email required" });
+    }
+
+    const existingUser = await usersCollection.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await otpCollection.deleteMany({ email });
+
+    await otpCollection.insertOne({
+      email,
+      otp,
+      createdAt: new Date(),
+    });
+
+    await transporter.sendMail({
+      from: "your-email@domain.com",
+      to: email,
+      subject: "ETA Dashboard OTP Verification",
+      html: `
+        <h2>Your OTP Code</h2>
+        <p>Use this OTP to verify your email:</p>
+        <h1>${otp}</h1>
+        <p>This OTP is valid for 10 minutes.</p>
+      `,
+    });
+
+    res.json({ message: "OTP sent successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to send OTP" });
+  }
+});
+import { sendOtpEmail } from "./utils/otpService.js";
+
+app.post("/api/auth/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const otp = Math.floor(100000 + Math.random() * 900000);
+
+    await otpCollection.insertOne({
+      email,
+      otp,
+      createdAt: new Date(),
+    });
+
+    await sendOtpEmail(email, otp);
+
+    res.json({ message: "OTP sent successfully" });
+
+  } catch (err) {
+    res.status(500).json({ message: "Failed to send OTP" });
+  }
+});
+app.post("/api/auth/verify-otp", async (req, res) => {
+  try {
+    const { email, otp, name, password } = req.body;
+
+    const record = await otpCollection.findOne({ email, otp: Number(otp) });
+
+    if (!record) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await usersCollection.insertOne({
+      email,
+      name,
+      password: hashedPassword,
+      createdAt: new Date(),
+    });
+
+    await otpCollection.deleteMany({ email });
+
+    res.json({ message: "User created successfully" });
+
+  } catch (err) {
+    res.status(500).json({ message: "Verification failed" });
+  }
+});
 
 /* =============================
    API: FETCH ETA DATA
    ============================= */
-app.post("/api/eta", async (req, res) => {
+app.post("/api/eta", authMiddleware, async (req, res) => {
+
   try {
     const {
   fromRunId,
@@ -297,7 +491,8 @@ const collection = db.collection(collectionName);
 /* =============================
    API: AVERAGE VARIATION (CORRECT)
    ============================= */
-app.post("/api/eta/average-variation", async (req, res) => {
+app.post("/api/eta/average-variation", authMiddleware, async (req, res) => {
+
   try {
     const { fromRunId, toRunId } = req.body;
     const startTime = Date.now();
