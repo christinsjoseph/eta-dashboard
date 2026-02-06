@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { secureFetch } from "../utils/secureFetch";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Brush } from "recharts";
 import {
   LineChart,
@@ -12,7 +13,52 @@ import {
 } from "recharts";
 
 import PieChartBlock from "../components/PieChartBlock";
+import { MapContainer, TileLayer, Polyline, Marker, useMap } from "react-leaflet";
+import polyline from "@mapbox/polyline";
+import "leaflet/dist/leaflet.css";
 import type { EtaRecord, ComparisonFlag, TimeBucket } from "../types/eta";
+import L from "leaflet";
+
+const startIcon = new L.DivIcon({
+  className: "custom-start-icon",
+  html: `<div style="
+    width:10px;
+    height:10px;
+    background:#16a34a;
+    border-radius:50%;
+    border:2px solid white;
+    box-shadow:0 0 0 2px #16a34a33;
+  "></div>`,
+  iconSize: [10, 10],
+  iconAnchor: [5, 5],
+});
+
+const endIcon = new L.DivIcon({
+  className: "custom-end-icon",
+  html: `<div style="
+    width:10px;
+    height:10px;
+    background:#ef4444;
+    border-radius:50%;
+    border:2px solid white;
+    box-shadow:0 0 0 2px #ef444433;
+  "></div>`,
+  iconSize: [10, 10],
+  iconAnchor: [5, 5],
+});
+// Default map center per city (used for City Routes Map initial zoom)
+const CITY_COORDS: Record<string, [number, number]> = {
+  delhi: [28.6139, 77.2090],
+  mumbai: [19.0760, 72.8777],
+  bangalore: [12.9716, 77.5946],
+  bengaluru: [12.9716, 77.5946],
+  chennai: [13.0827, 80.2707],
+  hyderabad: [17.3850, 78.4867],
+  pune: [18.5204, 73.8567],
+  kolkata: [22.5726, 88.3639],
+  ahmedabad: [23.0225, 72.5714],
+};
+
 
 const ALL_BUCKETS: TimeBucket[] = ["Morning", "Afternoon", "Evening", "Midnight"];
 const ALL_FLAGS: ComparisonFlag[] = ["Similar", "Underestimate", "Overestimate"];
@@ -20,8 +66,10 @@ const ALL_FLAGS: ComparisonFlag[] = ["Similar", "Underestimate", "Overestimate"]
 type Props = {
   city: string;
   records: EtaRecord[];
+  collectionName: string;
   onBack: () => void;
 };
+
 
 function getTimeBucket(runId: string): TimeBucket {
   const digits = runId.replace(/\D/g, "");
@@ -41,6 +89,85 @@ function getTimeBucket(runId: string): TimeBucket {
   if (hour >= 17 && hour < 22) return "Evening";
   return "Midnight";
 }
+function decodePolyline(encoded: string) {
+  return polyline.decode(encoded).map(([lat, lng]) => [lat, lng]);
+}
+function isValidCoord([lat, lng]: [number, number]) {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    lat !== 0 &&
+    lng !== 0 &&
+    lat >= 6 && lat <= 38 &&   // India latitude bounds
+    lng >= 68 && lng <= 98     // India longitude bounds
+  );
+}
+
+function CityRoutesViewController({
+  cityCenter,
+  routes,
+}: {
+  cityCenter: [number, number];
+  routes: [number, number][][];
+}) {
+  const map = useMap();
+  const hasZoomedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasZoomedRef.current) return; // ✅ prevent re-zooming
+
+    setTimeout(() => {
+      map.invalidateSize();
+
+      const cleanedRoutes = routes
+        .map(route => route.filter(isValidCoord))
+        .filter(route => route.length > 1);
+
+      if (cleanedRoutes.length) {
+        const allPoints = cleanedRoutes.flat();
+        map.fitBounds(allPoints, { padding: [60, 60], maxZoom: 14 });
+      } else {
+        map.setView(cityCenter, 12);
+      }
+
+      hasZoomedRef.current = true; // ✅ lock after first zoom
+    }, 300);
+  }, [cityCenter, routes, map]);
+
+  return null;
+}
+
+
+
+function ResizeMapOnOpen() {
+  const map = useMap();
+
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 250); // wait for modal layout
+  }, [map]);
+
+  return null;
+}
+
+function RouteMapViewController({ coords }: { coords: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!coords.length) return;
+
+    setTimeout(() => {
+      map.invalidateSize();
+      map.fitBounds(coords, { padding: [60, 60], maxZoom: 14 });
+    }, 300);
+  }, [coords, map]);
+
+  return null;
+}
+
+
+
 // Compact Horizontal FilterGroup component
 function CompactFilterGroup({
   title,
@@ -86,19 +213,68 @@ color: colored
 </div>
 );
 }
-export default function CityDetailPage({ city, records, onBack }: Props) {
+export default function CityDetailPage({ city, records, collectionName, onBack }: Props) {
   const [comparison, setComparison] = useState<"mappls" | "oauth2">("mappls");
-  // 🔽 STEP 4: active city inside CityDetail page
-const [activeCity, setActiveCity] = useState(
+  const [activeCity, setActiveCity] = useState(
   city.toLowerCase()
 );
+const cityCenter: [number, number] =
+  CITY_COORDS[activeCity] || [20, 78]; // fallback = India center
 
   const [selectedBuckets, setSelectedBuckets] = useState<TimeBucket[]>(ALL_BUCKETS);
   const [selectedFlags, setSelectedFlags] = useState<ComparisonFlag[]>(ALL_FLAGS);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [uidSearch, setUidSearch] = useState("");
-  // 🔽 STEP 3: get unique cities from all records
+  const [mapOpen, setMapOpen] = useState(false);
+const [routeGeometry, setRouteGeometry] = useState<any | null>(null);
+
+const [showMappls, setShowMappls] = useState(true);
+const [showGoogle, setShowGoogle] = useState(true);
+const [cityRoutesMapOpen, setCityRoutesMapOpen] = useState(false);
+const [cityRoutes, setCityRoutes] = useState<{ geom: string; uids: string[] }[]>([]);
+
+const [uidViewOpen, setUidViewOpen] = useState(false);
+const [selectedUid, setSelectedUid] = useState<string | null>(null);
+const [uidRecords, setUidRecords] = useState<EtaRecord[]>([]);
+const [uidBuckets, setUidBuckets] = useState<TimeBucket[]>(ALL_BUCKETS);
+
+// Decode polylines when geometry is loaded
+const mapplsCoords = useMemo(
+  () =>
+    routeGeometry?.mapplsGeom
+      ? decodePolyline(routeGeometry.mapplsGeom)
+      : [],
+  [routeGeometry]
+);
+
+const googleCoords = useMemo(
+  () =>
+    routeGeometry?.googleGeom
+      ? decodePolyline(routeGeometry.googleGeom)
+      : [],
+  [routeGeometry]
+);
+
+const allCoords = [...mapplsCoords, ...googleCoords];
+
+const decodedCityRoutes = useMemo(() => {
+  return cityRoutes
+    .map(route => {
+      try {
+        return {
+          coords: decodePolyline(route.geom),
+          uids: route.uids
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as { coords: [number, number][], uids: string[] }[];
+}, [cityRoutes]);
+
+
+
 const allCities = useMemo(() => {
   return Array.from(
     new Set(
@@ -122,7 +298,6 @@ const allCities = useMemo(() => {
 const [sortKey, setSortKey] = useState<SortKey>("count");
 const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-// 🔽 STEP 5: records filtered by selected city
 const cityFilteredRecords = useMemo(() => {
   return records.filter((r: any) => {
     const c =
@@ -331,6 +506,64 @@ const exportExpandedTableCSV = () => {
 
   URL.revokeObjectURL(url);
 };
+async function openRouteMap(uid: string) {
+  try {
+    const res = await secureFetch(
+      `${import.meta.env.VITE_API_BASE}/api/eta/route-geometry`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collectionName,
+          uid,
+        }),
+      }
+    );
+
+    const data = await res.json();
+
+    setRouteGeometry(data);
+    setMapOpen(true);
+  } catch (err) {
+    console.error("Failed to fetch route geometry", err);
+  }
+}
+
+function openUidView(uid: string) {
+  setSelectedUid(uid);
+
+  const history = records.filter(r => r.uid === uid);
+
+  setUidRecords(history);
+  setUidViewOpen(true);
+}
+async function openCityRoutesMap() {
+  try {
+    const res = await secureFetch(
+      `${import.meta.env.VITE_API_BASE}/api/eta/city-route-geometries`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collectionName,
+          city: activeCity.trim(),
+
+        }),
+      }
+    );
+
+    const data = await res.json();
+
+    // data.routes = [{ geom, uids }]
+    setCityRoutes(data.routes || []);
+    setCityRoutesMapOpen(true);
+  } catch (err) {
+    console.error("Failed to fetch city routes", err);
+  }
+}
+
+
+
 
   const avgVariationLabel =
     parseFloat(avgVariation) > 10
@@ -340,11 +573,49 @@ const exportExpandedTableCSV = () => {
       : "Similar";
 
   const chartData = useMemo(
-    () => filteredRecords.map((r, i) => ({ ...r, index: i + 1 })),
-    [filteredRecords]
-  );
+  () => filteredRecords.map((r, i) => ({ ...r, index: i + 1 })),
+  [filteredRecords]
+);
 
-  const timeBucketStats = useMemo(() => {
+
+
+const filteredUidRecords = useMemo(() => {
+  return uidRecords
+    .map(r => {
+      const google = Number(r.googleETA ?? 0);
+      const mappls = Number(r.mapplsETA ?? 0);
+
+      const variation =
+        google > 0 && mappls > 0
+          ? ((mappls - google) / google) * 100
+          : 0;
+
+      return {
+        ...r,
+        timeBucket: getTimeBucket(r.runId),
+        variation,
+      };
+    })
+    .filter(r => uidBuckets.includes(r.timeBucket));
+}, [uidRecords, uidBuckets]);
+
+const uidStats = useMemo(() => {
+  if (!filteredUidRecords.length) return { avg: 0, max: 0, min: 0 };
+
+  const variations = filteredUidRecords.map(r => r.variation);
+
+  return {
+    avg: variations.reduce((a, b) => a + b, 0) / variations.length,
+    max: Math.max(...variations),
+    min: Math.min(...variations),
+  };
+}, [filteredUidRecords]);
+
+
+
+
+const timeBucketStats = useMemo(() => {
+
     const map: Record<TimeBucket, typeof enrichedRecords> = {
       Morning: [],
       Afternoon: [],
@@ -409,8 +680,6 @@ const exportExpandedTableCSV = () => {
   fontWeight: 700,
   color: "#1f2937",
   whiteSpace: "nowrap",
-
-  /* 🔒 Sticky header */
   position: "sticky",
   top: 96,
   background: "rgba(248,250,252,0.95)",
@@ -456,6 +725,17 @@ const exportExpandedTableCSV = () => {
                     <option value="oauth2">Oauth2 vs Google</option>
                   </select>
                   <button onClick={onBack} style={btnStyle}>← Back to Cities</button>
+                  <button
+  onClick={openCityRoutesMap}
+  style={{
+    ...btnStyle,
+    background: "linear-gradient(135deg, #16a34a, #15803d)",
+    color: "white",
+  }}
+>
+  🗺️ City Routes Map
+</button>
+
                 </div>
               </div>
             </div>
@@ -1014,13 +1294,13 @@ const exportExpandedTableCSV = () => {
     flex: "1 1 auto",
     display: "flex",
     flexDirection: "column",
-    minHeight: "800px", // 🔴 VERY IMPORTANT
+    minHeight: "800px",
   }}
 >
             {/* Chart */}
 <div
   style={{
-    flex: "0 0 55%",   // chart takes ~55%
+    flex: "0 0 55%",
     minHeight: "420px",
     marginBottom: "20px",
   }}
@@ -1107,23 +1387,6 @@ name="Google ETA"
     borderBottom: "1px solid #e5e7eb",
   }}
 >
-  <button
-  onClick={() => setIsTableExpanded(!isTableExpanded)}
-  style={{
-    position: "absolute",
-    right: 16,
-    top: 12,
-    padding: "6px 12px",
-    fontSize: "12px",
-    fontWeight: 700,
-    borderRadius: "10px",
-    border: "1px solid #c7d2fe",
-    background: "white",
-    cursor: "pointer",
-  }}
->
-  {isTableExpanded ? "Close Table" : "Expand Table"}
-</button>
 <div style={{ position: "absolute", right: 16, top: 12, display: "flex", gap: "8px" }}>
   <button
     onClick={exportExpandedTableCSV}
@@ -1197,21 +1460,6 @@ name="Google ETA"
       Unique UIDs: {sortedExpandedTableData.length}
     </span>
   </h3>
-  <div style={{ textAlign: "center", marginTop: "6px" }}>
-  <button
-    onClick={() => setIsTableExpanded(true)}
-    style={{
-      background: "white",
-      border: "1px solid #e5e7eb",
-      borderRadius: "8px",
-      padding: "6px 12px",
-      fontSize: "12px",
-      fontWeight: 600,
-      cursor: "pointer",
-    }}
-  >
-  </button>
-</div>
 
 </div>
           <table
@@ -1251,6 +1499,7 @@ name="Google ETA"
     <th style={thStyle} onClick={() => handleSort("activeComparisonFlag")}>
       Status {sortKey === "activeComparisonFlag" && (sortOrder === "asc" ? "▲" : "▼")}
     </th>
+    <th style={{ ...thStyle, cursor: "default" }}>Actions</th>
   </tr>
 </thead>
 
@@ -1297,6 +1546,65 @@ name="Google ETA"
                   >
                     {r.activeComparisonFlag}
                   </td>
+                  <td style={{ padding: "12px 8px", textAlign: "center" }}>
+  <div style={{ display: "flex", gap: "8px", justifyContent: "center", alignItems: "center" }}>
+    {/* Map Button */}
+    <button
+      onClick={() => openRouteMap(r.uid)}
+      style={{
+        padding: "6px 14px",
+        fontSize: "13px",
+        fontWeight: 600,
+        borderRadius: "8px",
+        border: "1px solid #3b82f6",
+        background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+        color: "white",
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+        boxShadow: "0 2px 4px rgba(59, 130, 246, 0.2)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 4px 8px rgba(59, 130, 246, 0.3)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "0 2px 4px rgba(59, 130, 246, 0.2)";
+      }}
+    >
+      🗺️ Map
+    </button>
+
+    {/* Compare Button */}
+    <button
+      onClick={() => openUidView(r.uid)}
+      style={{
+        padding: "6px 14px",
+        fontSize: "13px",
+        fontWeight: 600,
+        borderRadius: "8px",
+        border: "1px solid #10b981",
+        background: "linear-gradient(135deg, #10b981, #059669)",
+        color: "white",
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+        boxShadow: "0 2px 4px rgba(16, 185, 129, 0.2)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 4px 8px rgba(16, 185, 129, 0.3)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "0 2px 4px rgba(16, 185, 129, 0.2)";
+      }}
+    >
+      📊 Compare
+    </button>
+  </div>
+</td>
+
+
                 </tr>
               ))}
             </tbody>
@@ -1305,7 +1613,469 @@ name="Google ETA"
       </div>
       </div>
     )}
+        
+
+{/* UID COMPARISON FULL SCREEN VIEW */}
+{uidViewOpen && selectedUid && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "linear-gradient(135deg, #0f172a, #1e293b)",
+      zIndex: 4000,
+      padding: "32px",
+      overflowY: "auto",
+      color: "white",
+    }}
+  >
+    {/* Header */}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+      <div style={{ flex: 1 }}>
+        <h2 style={{ margin: 0, fontSize: "2rem", fontWeight: 800 }}>
+          UID Comparison — {selectedUid}
+        </h2>
+        <p style={{ color: "#cbd5e1", marginTop: "6px", fontSize: "1rem" }}>
+          Google vs Mappls ETA across all runs
+        </p>
+        <div style={{ 
+          marginTop: "12px", 
+          display: "flex", 
+          gap: "20px",
+          fontSize: "0.95rem",
+          fontWeight: 600
+        }}>
+          <div style={{ 
+            padding: "8px 16px", 
+            background: "rgba(59, 130, 246, 0.2)", 
+            borderRadius: "8px",
+            border: "1px solid rgba(59, 130, 246, 0.3)"
+          }}>
+            <span style={{ color: "#94a3b8" }}>Total Iterations: </span>
+            <span style={{ color: "#60a5fa", fontWeight: 800, fontSize: "1.1rem" }}>
+              {uidRecords.length}
+            </span>
+          </div>
+          <div style={{ 
+            padding: "8px 16px", 
+            background: "rgba(34, 197, 94, 0.2)", 
+            borderRadius: "8px",
+            border: "1px solid rgba(34, 197, 94, 0.3)"
+          }}>
+            <span style={{ color: "#94a3b8" }}>Filtered Iterations: </span>
+            <span style={{ color: "#4ade80", fontWeight: 800, fontSize: "1.1rem" }}>
+              {filteredUidRecords.length}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={() => setUidViewOpen(false)}
+        style={{
+          background: "#ef4444",
+          color: "white",
+          border: "none",
+          borderRadius: "50%",
+          width: "48px",
+          height: "48px",
+          fontSize: "1.8rem",
+          cursor: "pointer",
+          boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+          transition: "all 0.2s ease",
+          flexShrink: 0,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.1)";
+          e.currentTarget.style.boxShadow = "0 6px 16px rgba(239, 68, 68, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.boxShadow = "0 4px 12px rgba(239, 68, 68, 0.4)";
+        }}
+      >
+        ×
+      </button>
+    </div>
+
+    {/* Time Bucket Filter */}
+    <div style={{ 
+      marginBottom: "24px",
+      padding: "16px",
+      background: "rgba(30, 41, 59, 0.5)",
+      borderRadius: "12px",
+      border: "1px solid rgba(148, 163, 184, 0.2)"
+    }}>
+      <CompactFilterGroup
+        title="Time Buckets"
+        options={ALL_BUCKETS}
+        selected={uidBuckets}
+        onToggle={(b) =>
+          setUidBuckets((prev) =>
+            prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]
+          )
+        }
+      />
+    </div>
+
+   {/* Stats Row */}
+<div style={{ display: "flex", gap: "20px", marginBottom: "30px", flexWrap: "wrap" }}>
+  <div style={{ 
+    background: "rgba(30, 41, 59, 0.6)", 
+    padding: "20px 28px", 
+    borderRadius: "16px",
+    border: "1px solid rgba(148, 163, 184, 0.2)",
+    flex: "1",
+    minWidth: "200px"
+  }}>
+    <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Avg Variation</div>
+    <div style={{ fontSize: "28px", fontWeight: 800, color: "#facc15" }}>
+      {uidStats.avg.toFixed(2)}%
+    </div>
   </div>
+
+  <div style={{ 
+    background: "rgba(30, 41, 59, 0.6)", 
+    padding: "20px 28px", 
+    borderRadius: "16px",
+    border: "1px solid rgba(148, 163, 184, 0.2)",
+    flex: "1",
+    minWidth: "200px"
+  }}>
+    <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Max Overestimate</div>
+    <div style={{ fontSize: "28px", fontWeight: 800, color: "#ef4444" }}>
+      {uidStats.max.toFixed(2)}%
+    </div>
   </div>
+
+  <div style={{ 
+    background: "rgba(30, 41, 59, 0.6)", 
+    padding: "20px 28px", 
+    borderRadius: "16px",
+    border: "1px solid rgba(148, 163, 184, 0.2)",
+    flex: "1",
+    minWidth: "200px"
+  }}>
+    <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Max Underestimate</div>
+    <div style={{ fontSize: "28px", fontWeight: 800, color: "#22c55e" }}>
+      {uidStats.min.toFixed(2)}%
+    </div>
+  </div>
+</div>
+
+{/* Chart */}
+<div style={{ 
+  height: "500px", 
+  background: "rgba(30, 41, 59, 0.3)",
+  borderRadius: "16px",
+  padding: "20px",
+  border: "1px solid rgba(148, 163, 184, 0.2)"
+}}>
+  <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={filteredUidRecords.map((r, i) => ({ ...r, index: i + 1 }))}>
+          <CartesianGrid strokeDasharray="4 4" stroke="#334155" />
+          <XAxis dataKey="index" stroke="#94a3b8" />
+          <YAxis stroke="#94a3b8" />
+          <Tooltip 
+            contentStyle={{
+              background: "rgba(15, 23, 42, 0.95)",
+              border: "1px solid rgba(148, 163, 184, 0.3)",
+              borderRadius: "8px",
+              color: "white"
+            }}
+          />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey="googleETA"
+            stroke="#3b82f6"
+            strokeWidth={3}
+            dot={false}
+            name="Google ETA"
+          />
+          <Line
+            type="monotone"
+            dataKey="mapplsETA"
+            stroke="#22c55e"
+            strokeWidth={3}
+            dot={false}
+            name="Mappls ETA"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
+)}
+
+        {/* ROUTE MAP MODAL */}
+    {mapOpen && routeGeometry && (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.75)",
+          zIndex: 5000,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backdropFilter: "blur(4px)",
+        }}
+      >
+        <div
+          style={{
+            width: "90%",
+            height: "85%",
+            background: "white",
+            borderRadius: "20px",
+            overflow: "hidden",
+            position: "relative",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+          }}
+        >
+          <button
+            onClick={() => setMapOpen(false)}
+            style={{
+              position: "absolute",
+              top: 16,
+              right: 16,
+              zIndex: 6000,
+              background: "#ef4444",
+              color: "white",
+              border: "none",
+              borderRadius: "50%",
+              width: 44,
+              height: 44,
+              fontSize: 24,
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(1.1)";
+              e.currentTarget.style.boxShadow = "0 6px 16px rgba(239, 68, 68, 0.6)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(239, 68, 68, 0.4)";
+            }}
+          >
+            ×
+          </button>
+          
+          {/* Distance Difference Badge */}
+<div
+  style={{
+    position: "absolute",
+    top: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 6000,
+    background: "white",
+    padding: "10px 18px",
+    borderRadius: 12,
+    fontWeight: 700,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    fontSize: "15px",
+    border: "2px solid #e5e7eb",
+  }}
+>
+  <span style={{ color: "#64748b" }}>Distance Δ: </span>
+  <span style={{ 
+    color: routeGeometry.mapplsDistance > routeGeometry.googleDistance ? "#ef4444" : "#10b981",
+    fontWeight: 800
+  }}>
+    {routeGeometry.mapplsDistance && routeGeometry.googleDistance
+      ? (routeGeometry.mapplsDistance - routeGeometry.googleDistance).toFixed(1)
+      : "0"}{" "}
+    m
+  </span>
+</div>
+
+<div
+  style={{
+    position: "absolute",
+    bottom: 20,
+    left: 16,
+    zIndex: 6000,
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  }}
+>
+  <button
+    onClick={() => setShowMappls((v) => !v)}
+    style={{
+      padding: "8px 16px",
+      borderRadius: "10px",
+      border: `2px solid ${showMappls ? "#16a34a" : "#cbd5e1"}`,
+      background: showMappls ? "#16a34a" : "white",
+      color: showMappls ? "white" : "#16a34a",
+      fontWeight: 700,
+      cursor: "pointer",
+      transition: "all 0.2s ease",
+      boxShadow: showMappls ? "0 2px 8px rgba(22, 163, 74, 0.3)" : "0 2px 4px rgba(0,0,0,0.1)",
+    }}
+  >
+    Mappls Route
+  </button>
+
+  <button
+    onClick={() => setShowGoogle((v) => !v)}
+    style={{
+      padding: "8px 16px",
+      borderRadius: "10px",
+      border: `2px solid ${showGoogle ? "#2563eb" : "#cbd5e1"}`,
+      background: showGoogle ? "#2563eb" : "white",
+      color: showGoogle ? "white" : "#2563eb",
+      fontWeight: 700,
+      cursor: "pointer",
+      transition: "all 0.2s ease",
+      boxShadow: showGoogle ? "0 2px 8px rgba(37, 99, 235, 0.3)" : "0 2px 4px rgba(0,0,0,0.1)",
+    }}
+  >
+    Google Route
+  </button>
+</div>
+
+          <MapContainer
+  center={[20, 78]}
+  zoom={5}
+  style={{ height: "100%", width: "100%" }}
+>
+            <TileLayer
+  attribution="© MapmyIndia"
+  url="https://mt4.mapmyindia.com/advancedmaps/v1/6e8l8fqpmlc8d4t3d7zwdttpgedmda6i/retina_map/{z}/{x}/{y}.png"
+/>
+<RouteMapViewController coords={allCoords.filter(isValidCoord)} />
+
+            
+            {/* Start & End Markers for Mappls */}
+{showMappls && mapplsCoords.length > 0 && (
+  <>
+    <Marker position={mapplsCoords[0]} icon={startIcon} />
+    <Marker position={mapplsCoords[mapplsCoords.length - 1]} icon={endIcon} />
+  </>
+)}
+
+{/* Start & End Markers for Google */}
+{showGoogle && googleCoords.length > 0 && (
+  <>
+    <Marker position={googleCoords[0]} icon={startIcon} />
+    <Marker position={googleCoords[googleCoords.length - 1]} icon={endIcon} />
+  </>
+)}
+
+           {showMappls && routeGeometry.mapplsGeom && (
+  <Polyline
+    positions={mapplsCoords}
+    pathOptions={{ color: "#16a34a", weight: 5 }}
+  />
+)}
+
+            {showGoogle && routeGeometry.googleGeom && (
+  <Polyline
+    positions={googleCoords}
+    pathOptions={{ color: "#2563eb", weight: 5 }}
+  />
+)}
+
+          </MapContainer>
+        </div>
+      </div>
+    )}
+{/* CITY ROUTES MAP MODAL */}
+{cityRoutesMapOpen && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.75)",
+      zIndex: 5500,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backdropFilter: "blur(4px)",
+    }}
+  >
+    <div
+      style={{
+        width: "95%",
+        height: "90%",
+        background: "white",
+        borderRadius: "20px",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      <button
+        onClick={() => setCityRoutesMapOpen(false)}
+        style={{
+          position: "absolute",
+          top: 16,
+          right: 16,
+          zIndex: 6000,
+          background: "#ef4444",
+          color: "white",
+          border: "none",
+          borderRadius: "50%",
+          width: 44,
+          height: 44,
+          fontSize: 24,
+          cursor: "pointer",
+        }}
+      >
+        ×
+      </button>
+
+      <MapContainer style={{ height: "100%", width: "100%" }} zoomControl={true}>
+
+        <TileLayer
+          attribution="© MapmyIndia"
+          url="https://mt4.mapmyindia.com/advancedmaps/v1/6e8l8fqpmlc8d4t3d7zwdttpgedmda6i/retina_map/{z}/{x}/{y}.png"
+        />
+        <CityRoutesViewController
+  cityCenter={cityCenter}
+  routes={decodedCityRoutes.map(r => r.coords)}
+/>
+
+  <ResizeMapOnOpen />
+
+
+
+        {/* Draw each unique route */}
+        {decodedCityRoutes.map((route, idx) => {
+  const safeCoords = route.coords.filter(isValidCoord);
+  if (safeCoords.length < 2) return null;
+
+  return (
+    <Polyline
+      key={idx}
+      positions={safeCoords}
+      pathOptions={{
+        color: `hsl(${(idx * 67) % 360}, 70%, 45%)`,
+        weight: 5,
+        opacity: 0.9,
+      }}
+      eventHandlers={{
+  click: (e) => {
+    const map = (e.target as any)._map as L.Map;
+    const uniqueUids = [...new Set(route.uids)];
+
+    L.popup()
+      .setLatLng(e.latlng)
+      .setContent(`<b>UID(s)</b><br/>${uniqueUids.join(", ")}`)
+      .openOn(map);
+  },
+}}
+    />
   );
+})}
+
+
+      </MapContainer>
+    </div>
+  </div>
+)}
+  </div>
+</div>
+);
 }

@@ -1,4 +1,4 @@
-// server.js - FINAL, CORRECT & LOGIC-ALIGNED VERSION
+// server.js - CORRECTED VERSION
 
 import express from "express";
 import cors from "cors";
@@ -8,7 +8,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 
-
 dotenv.config();
 
 const app = express();
@@ -16,10 +15,8 @@ app.use(cors());
 app.use(express.json());
 
 const MONGO_URL = "mongodb://localhost:27017";
-const DB_NAME = "eta_dashboard";   // ✅ ADD
+const DB_NAME = "eta_dashboard";
 const JWT_SECRET = "ETA_DASHBOARD_SECRET";
-
-
 
 const client = new MongoClient(MONGO_URL);
 
@@ -39,7 +36,6 @@ const transporter = nodemailer.createTransport({
     pass: "your-email-password",   // 👈 CHANGE THIS
   },
 });
-
 
 /* =============================
    CREATE INDEXES FOR PERFORMANCE
@@ -69,7 +65,6 @@ await createIndexes();
    HELPERS
    ============================= */
 
-// IMPORTANT: All comparisons use Duration fields (NOT ETADuration)
 function calculateComparisonFlag(predicted, google, threshold = 10) {
   if (!google || google === 0) return "Similar";
   if (!predicted || predicted === 0) return "Similar";
@@ -91,6 +86,27 @@ function deriveTimeBucket(runId) {
   if (hour >= 12 && hour < 16) return "Afternoon";
   if (hour >= 16 && hour < 22) return "Evening";
   return "Midnight";
+}
+
+/* =============================
+   AUTHENTICATION MIDDLEWARE
+   ============================= */
+function authMiddleware(req, res, next) {
+  const header = req.headers["authorization"];
+
+  if (!header) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  const token = header.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
 }
 
 /* =============================
@@ -123,7 +139,6 @@ app.post("/api/auth/create", async (req, res) => {
     res.status(500).json({ message: "Error creating user" });
   }
 });
-
 
 // LOGIN API
 app.post("/api/auth/login", async (req, res) => {
@@ -160,23 +175,8 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: "Login failed" });
   }
 });
-function authMiddleware(req, res, next) {
-  const header = req.headers["authorization"];
 
-  if (!header) {
-    return res.status(401).json({ message: "No token provided" });
-  }
-
-  const token = header.split(" ")[1];
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-}
+// SEND OTP
 app.post("/api/auth/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
@@ -215,36 +215,17 @@ app.post("/api/auth/send-otp", async (req, res) => {
 
     res.json({ message: "OTP sent successfully" });
   } catch (err) {
+    console.error("❌ Send OTP failed:", err);
     res.status(500).json({ message: "Failed to send OTP" });
   }
 });
-import { sendOtpEmail } from "./utils/otpService.js";
 
-app.post("/api/auth/send-otp", async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const otp = Math.floor(100000 + Math.random() * 900000);
-
-    await otpCollection.insertOne({
-      email,
-      otp,
-      createdAt: new Date(),
-    });
-
-    await sendOtpEmail(email, otp);
-
-    res.json({ message: "OTP sent successfully" });
-
-  } catch (err) {
-    res.status(500).json({ message: "Failed to send OTP" });
-  }
-});
+// VERIFY OTP
 app.post("/api/auth/verify-otp", async (req, res) => {
   try {
     const { email, otp, name, password } = req.body;
 
-    const record = await otpCollection.findOne({ email, otp: Number(otp) });
+    const record = await otpCollection.findOne({ email, otp });
 
     if (!record) {
       return res.status(400).json({ message: "Invalid OTP" });
@@ -264,6 +245,7 @@ app.post("/api/auth/verify-otp", async (req, res) => {
     res.json({ message: "User created successfully" });
 
   } catch (err) {
+    console.error("❌ Verify OTP failed:", err);
     res.status(500).json({ message: "Verification failed" });
   }
 });
@@ -272,23 +254,21 @@ app.post("/api/auth/verify-otp", async (req, res) => {
    API: FETCH ETA DATA
    ============================= */
 app.post("/api/eta", authMiddleware, async (req, res) => {
-
   try {
     const {
-  fromRunId,
-  toRunId,
-  collectionName,
-  mode = "full",
-  limit = 10000,
-  page = 1
-} = req.body;
+      fromRunId,
+      toRunId,
+      collectionName,
+      mode = "full",
+      limit = 10000,
+      page = 1
+    } = req.body;
 
-if (!collectionName) {
-  return res.status(400).json({ error: "collectionName is required" });
-}
+    if (!collectionName) {
+      return res.status(400).json({ error: "collectionName is required" });
+    }
 
-const collection = db.collection(collectionName);
-
+    const collection = db.collection(collectionName);
     const startTime = Date.now();
 
     const matchQuery = {};
@@ -481,7 +461,7 @@ const collection = db.collection(collectionName);
   } catch (err) {
     console.error("❌ /api/eta failed:", err);
     res.status(500).json({
-      collectionName,
+      collectionName: req.body.collectionName,
       data: [],
       error: err.message
     });
@@ -489,12 +469,17 @@ const collection = db.collection(collectionName);
 });
 
 /* =============================
-   API: AVERAGE VARIATION (CORRECT)
+   API: AVERAGE VARIATION
    ============================= */
 app.post("/api/eta/average-variation", authMiddleware, async (req, res) => {
-
   try {
-    const { fromRunId, toRunId } = req.body;
+    const { fromRunId, toRunId, collectionName } = req.body;
+
+    if (!collectionName) {
+      return res.status(400).json({ error: "collectionName is required" });
+    }
+
+    const collection = db.collection(collectionName);
     const startTime = Date.now();
 
     const matchQuery = {
@@ -563,7 +548,7 @@ app.post("/api/eta/average-variation", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error("❌ /api/eta/average-variation failed:", err);
     res.status(500).json({
-      collectionName,
+      collectionName: req.body.collectionName,
       data: {},
       error: err.message
     });
@@ -571,9 +556,92 @@ app.post("/api/eta/average-variation", authMiddleware, async (req, res) => {
 });
 
 /* =============================
-   START SERVER
+   API: FETCH ROUTE GEOMETRY BY UID
    ============================= */
-const PORT = 4000;
+app.post("/api/eta/route-geometry", authMiddleware, async (req, res) => {
+  try {
+    const { collectionName, uid } = req.body;
+
+    if (!collectionName || !uid) {
+      return res.status(400).json({ error: "collectionName and uid required" });
+    }
+
+    const collection = db.collection(collectionName);
+
+    const doc = await collection.findOne(
+      { UID: Number(uid) },
+      {
+        projection: {
+          Mappls_Geom: 1,
+          Google_Geom: 1,
+          Mappls_Distance: 1,
+          Google_Distance: 1,
+          _id: 0
+        }
+      }
+    );
+
+    if (!doc) {
+      return res.status(404).json({ error: "Route not found" });
+    }
+
+    res.json({
+      mapplsGeom: doc.Mappls_Geom || null,
+      googleGeom: doc.Google_Geom || null,
+      mapplsDistance: doc.Mappls_Distance || null,
+      googleDistance: doc.Google_Distance || null
+    });
+
+  } catch (err) {
+    console.error("❌ route-geometry failed:", err);
+    res.status(500).json({ error: "Failed to fetch route geometry" });
+  }
+});
+
+/* =============================
+   API: FETCH ALL CITY ROUTES (UNIQUE)
+   ============================= */
+app.post("/api/eta/city-route-geometries", authMiddleware, async (req, res) => {
+  try {
+    const { collectionName, city } = req.body;
+
+    if (!collectionName || !city) {
+      return res.status(400).json({ error: "collectionName and city required" });
+    }
+
+    const collection = db.collection(collectionName);
+
+    const docs = await collection.find(
+      {
+        City: { $regex: `^${city}$`, $options: "i" },
+        Mappls_Geom: { $exists: true, $ne: null }
+      },
+      { projection: { Mappls_Geom: 1, UID: 1, _id: 0 } }
+    ).toArray();
+
+    // Group UIDs by same geometry
+    const routeMap = {};
+
+    docs.forEach(d => {
+      if (!routeMap[d.Mappls_Geom]) {
+        routeMap[d.Mappls_Geom] = [];
+      }
+      routeMap[d.Mappls_Geom].push(String(d.UID));
+    });
+
+    const routes = Object.entries(routeMap).map(([geom, uids]) => ({
+      geom,
+      uids
+    }));
+
+    res.json({ routes });
+
+  } catch (err) {
+    console.error("❌ city-route-geometries failed:", err);
+    res.status(500).json({ error: "Failed to fetch city routes" });
+  }
+});
+
 /* =============================
    API: LIST ETA COLLECTIONS
    ============================= */
@@ -593,6 +661,7 @@ app.get("/api/eta/collections", async (req, res) => {
     res.status(500).json({ collections: [] });
   }
 });
+
 /* =============================
    API: COLLECTION DATE RANGE
    ============================= */
@@ -638,6 +707,10 @@ app.get("/api/eta/collection-range", async (req, res) => {
   }
 });
 
-app.listen(4000, "0.0.0.0", () => {
-  console.log("🚀 Backend running on http://0.0.0.0:4000");
+/* =============================
+   START SERVER
+   ============================= */
+const PORT = 4000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Backend running on http://0.0.0.0:${PORT}`);
 });

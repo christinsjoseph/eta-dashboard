@@ -39,6 +39,7 @@ type Source = {
   records: EtaRecord[];
   cityStats?: any[]; // For aggregated data
   totalRecords?: number; // For aggregated mode
+  collectionName?: string; 
 };
 
 function runIdFromDate(date: string, end = false) {
@@ -158,11 +159,13 @@ useEffect(() => {
       
       setSources((prev) => {
   const newSource = {
-    id: `mongo-${Date.now()}`,
-    name: `${selectedCollection} (${fromDate} → ${toDate})`,
-    records: response.data || [],
-    totalRecords: response.data?.length || 0,
-  };
+  id: `mongo-${Date.now()}`,
+  name: `${selectedCollection} (${fromDate} → ${toDate})`,
+  records: response.data || [],
+  totalRecords: response.data?.length || 0,
+  collectionName: selectedCollection,   // ✅ STORE REAL COLLECTION
+};
+
   return [...prev, newSource];
 });
 
@@ -224,20 +227,26 @@ if (comparisonMode) {
       (r.city ?? (r as any).City)?.toString().trim().toLowerCase() || "unknown";
     return city === selectedCity;
   });
-console.log("Selected city:", selectedCity);
-console.log("Merged records:", mergedRecords.length);
-console.log("City records:", cityRecords.length);
-console.log("Sample city record:", cityRecords[0]);
+
+  console.log("Selected city:", selectedCity);
+  console.log("Merged records:", mergedRecords.length);
+  console.log("City records:", cityRecords.length);
+  console.log("Sample city record:", cityRecords[0]);
+
+  const activeMongoSource = sources.find((s) => appliedIds.includes(s.id));
+const collectionName = activeMongoSource?.collectionName || "";
+
 
   return (
-   <CityDetailPage
-  city={selectedCity}
-  records={mergedRecords}   // ⬅️ PASS ALL RECORDS
-  onBack={() => setSelectedCity(null)}
-/>
-
+    <CityDetailPage
+      city={selectedCity}
+      records={mergedRecords}
+      collectionName={collectionName}   // ✅ NEW PROP
+      onBack={() => setSelectedCity(null)}
+    />
   );
 }
+
   if (appliedIds.length > 0) {
     return (
       <OverviewPage
